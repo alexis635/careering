@@ -41,7 +41,7 @@ export async function loadJob(id: number) {
 
 /** Library contents formatted for prompts, with ids so the model can point at a resume version. */
 export async function libraryContext() {
-  const items = await q<any>(`SELECT id, kind, title, body, tags FROM library_items ORDER BY kind, id`);
+  const items = await q<any>(`SELECT id, kind, title, body, tags FROM library_items WHERE NOT ('archived' = ANY(tags)) ORDER BY kind, id`);
   const by = (k: string) => items.filter((i) => i.kind === k);
   const fmt = (i: any) => `[#${i.id}]${i.title ? ` ${i.title}` : ''}${i.tags?.length ? ` (tags: ${i.tags.join(', ')})` : ''}\n${i.body}`;
   const section = (label: string, list: any[]) => (list.length ? `## ${label}\n${list.map(fmt).join('\n\n')}` : `## ${label}\n(none yet)`);

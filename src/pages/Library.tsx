@@ -33,12 +33,13 @@ export default function Library() {
   const [kind, setKind] = useState<LibItem['kind']>('bullet');
   const [items, setItems] = useState<LibItem[]>([]);
   const [filter, setFilter] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
 
   const load = () => api.get<LibItem[]>(`library?kind=${kind}`).then(setItems);
   useEffect(() => { load(); }, [kind]);
 
   const cur = KINDS.find((k) => k.key === kind)!;
-  const shown = items.filter((i) => !filter || (i.title + i.body + i.tags.join(' ')).toLowerCase().includes(filter.toLowerCase()));
+  const shown = items.filter((i) => (showArchived || !i.tags.includes('archived')) && (!filter || (i.title + i.body + i.tags.join(' ')).toLowerCase().includes(filter.toLowerCase())));
 
   return (
     <div className="max-w-3xl">
@@ -51,6 +52,7 @@ export default function Library() {
       <p className="text-sm text-teal mb-3">{cur.hint}</p>
       <div className="flex gap-2 mb-4">
         <input className="input" placeholder="Search…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <label className="text-sm text-teal flex items-center gap-1.5 whitespace-nowrap"><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Show archived</label>
         <button className="btn whitespace-nowrap" onClick={async () => { await api.post('library', { kind, title: '', body: '' }); load(); }}><Plus size={16} /> Add</button>
       </div>
       <div className="space-y-3">

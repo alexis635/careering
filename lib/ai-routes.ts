@@ -57,9 +57,9 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
     const framing = lib.resumes.find((r: any) => r.id === (body.resume_id ?? job.resume_version_id));
     const text = await ask(
       'Write a tailored one-page resume in EXACTLY this plain-text layout, nothing else (no code fences, no commentary):\n' +
-        'Line 1: the candidate\'s full name. Line 2: one contact line (email · phone · city · link), both copied from the base resume if present, otherwise use [YOUR NAME] and [email · phone · city].\n' +
+        'Line 1: the candidate\'s full name. Line 2: a short headline for the role being targeted. Line 3: one contact line (email · phone), all copied from the base resume or career facts; if missing use [YOUR NAME] and [email · phone]. Never add a location.\n' +
         'Then sections, each starting with "## " and an uppercase title, e.g. "## SUMMARY", "## EXPERIENCE", "## EDUCATION", "## SKILLS". Order sections by what best fits the role.\n' +
-        'Inside a section, each job or school is one line "### Title, Organization | Dates", followed by bullets that each start with "- ". Summary and skills are plain lines.\n' +
+        'Inside a section, each job or school is one line "### Title | Dates", then one line "> Organization · City, ST", then bullets that each start with "- ". Summary and skills are plain lines. Use the exact titles and dates from the CAREER FACTS bio.\n' +
         'Choose and lightly reword bullets from the BULLET BANK and the chosen resume version so they speak to the posting. Mirror the posting\'s keywords only where the material supports them. Keep facts, dates, and numbers unchanged. Strongest matches first. Must fit one page.' +
         (body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''),
       `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nBASE RESUME FRAMING:\n${framing ? framing.body : '(none chosen, use the bullet bank)'}\n\nCANDIDATE MATERIAL:\n${lib.text}`,
