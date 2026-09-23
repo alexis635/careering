@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { q } from '../lib/db';
-import { clearSession, isAuthed, issueSession } from '../lib/auth';
+import { q } from '../lib/db.js';
+import { clearSession, isAuthed, issueSession } from '../lib/auth.js';
 
 type Ctx = { method: string; parts: string[]; body: any; query: URLSearchParams };
 type Result = { status?: number; json: any; cookie?: string };
