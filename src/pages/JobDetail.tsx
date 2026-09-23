@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ArrowLeft, ExternalLink, Mail, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, Download, ExternalLink, Mail, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import type { Job, JobAction, JobContact, JobDoc, JobEmail, JobNote } from '../types';
 
@@ -48,6 +48,7 @@ export default function JobDetail() {
   const [gmail, setGmail] = useState<{ connected: boolean; email: string | null } | null>(null);
   const [compose, setCompose] = useState({ to: '', subject: '', body: '' });
   const [mailMsg, setMailMsg] = useState('');
+  const [edits, setEdits] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [aiErr, setAiErr] = useState('');
   const [instructions, setInstructions] = useState('');
@@ -265,8 +266,26 @@ export default function JobDetail() {
               </button>
               {openDoc === d.id && (
                 <>
-                  <pre className="whitespace-pre-wrap text-sm mt-3 font-sans">{d.body}</pre>
-                  <div className="flex gap-2 mt-3">
+                  {d.kind === 'resume' ? (
+                    <textarea className="input font-mono text-[12px] leading-relaxed mt-3" rows={22} value={edits[d.id] ?? d.body} onChange={(e) => setEdits({ ...edits, [d.id]: e.target.value })} />
+                  ) : (
+                    <pre className="whitespace-pre-wrap text-sm mt-3 font-sans">{d.body}</pre>
+                  )}
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {d.kind === 'resume' && (
+                      <>
+                        <button className="btn" disabled={busy === `pdf${d.id}`} onClick={async () => {
+                          setBusy(`pdf${d.id}`);
+                          try { const { downloadResumePdf } = await import('../lib/resumePdf'); await downloadResumePdf(edits[d.id] ?? d.body, `${(job.company || 'resume').replace(/[^\w]+/g, '-')}-resume-v${d.version}`); } finally { setBusy(null); }
+                        }}><Download size={13} /> {busy === `pdf${d.id}` ? 'Building…' : 'Download PDF'}</button>
+                        {edits[d.id] !== undefined && edits[d.id] !== d.body && (
+                          <button className="btn-ghost" onClick={async () => {
+                            const saved = await api.post<JobDoc>(`jobs/${id}/documents`, { kind: 'resume', title: d.title, body: edits[d.id] });
+                            setEdits((e) => { const { [d.id]: _, ...rest } = e; return rest; }); loadKids(); setOpenDoc(saved.id);
+                          }}>Save edits as new version</button>
+                        )}
+                      </>
+                    )}
                     {d.kind === 'outreach' && <button className="btn" onClick={() => useInEmail(d)}><Mail size={13} /> Use in email</button>}
                     <button className="btn-ghost" onClick={async () => { await api.del(`jobs/${id}/documents/${d.id}`); loadKids(); }}><Trash2 size={13} /> Delete</button>
                   </div>
