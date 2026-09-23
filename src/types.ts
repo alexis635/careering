@@ -14,6 +14,7 @@ export interface Job {
   remote_type: string; applied_date: string | null; deadline: string | null; contact_person: string;
   contact_notes: string; posting_text: string; match_notes: string; interview_prep: string;
   resume_version_id: number | null; updated_at: string;
+  posting_parsed: { summary?: string; requirements?: string[]; nice_to_haves?: string[]; keywords?: string[] } | null;
 }
 export interface JobDoc { id: number; kind: string; title: string; body: string; version: number; source: string; created_at: string }
 export interface JobNote { id: number; body: string; kind: string; created_at: string }

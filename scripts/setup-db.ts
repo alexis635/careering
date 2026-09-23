@@ -96,6 +96,7 @@ const statements = [
     key TEXT PRIMARY KEY,
     value JSONB NOT NULL
   )`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS posting_parsed JSONB`,
   `CREATE INDEX IF NOT EXISTS jobs_lane_idx ON jobs(lane_id)`,
   `CREATE INDEX IF NOT EXISTS job_emails_thread_idx ON job_emails(gmail_thread_id)`,
 ];

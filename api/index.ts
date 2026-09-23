@@ -1,5 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { q } from '../lib/db.js';
+import { aiRoute } from '../lib/ai-routes.js';
+import { HttpError } from '../lib/ai.js';
 import { clearSession, isAuthed, issueSession } from '../lib/auth.js';
 
 type Ctx = { method: string; parts: string[]; body: any; query: URLSearchParams };
@@ -141,6 +143,9 @@ async function route(c: Ctx): Promise<Result> {
     }
   }
 
+  // ---- ai ----
+  if (a === 'ai' && b && c.method === 'POST') return { json: await aiRoute(b, c.body) };
+
   // ---- library ----
   if (a === 'library') {
     if (!b && c.method === 'GET') {
@@ -207,6 +212,6 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     send(await route({ method, parts, body, query: url.searchParams }));
   } catch (e: any) {
     console.error(e);
-    send({ status: 500, json: { error: e?.message || 'Server error' } });
+    send({ status: e instanceof HttpError ? e.status : 500, json: { error: e?.message || 'Server error' } });
   }
 }

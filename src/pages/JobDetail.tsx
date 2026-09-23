@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ArrowLeft, ExternalLink, Trash2 } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import type { Job, JobAction, JobDoc, JobNote } from '../types';
 
@@ -42,6 +42,9 @@ export default function JobDetail() {
   const [newAction, setNewAction] = useState('');
   const [newDoc, setNewDoc] = useState({ kind: 'resume', title: '', body: '' });
   const [openDoc, setOpenDoc] = useState<number | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [aiErr, setAiErr] = useState('');
+  const [instructions, setInstructions] = useState('');
 
   const loadKids = () => {
     api.get<JobDoc[]>(`jobs/${id}/documents`).then(setDocs);
@@ -51,6 +54,13 @@ export default function JobDetail() {
   useEffect(() => { api.get<Job>(`jobs/${id}`).then(setJob); loadKids(); }, [id]);
 
   if (!job) return null;
+  async function ai(action: string, extra: Record<string, unknown> = {}) {
+    setBusy(action); setAiErr('');
+    try {
+      const out = await api.post<any>(`ai/${action}`, { job_id: Number(id), ...extra });
+      if (['parse', 'match'].includes(action)) setJob(out); else { loadKids(); setTab('Documents'); setOpenDoc(out.id); }
+    } catch (e: any) { setAiErr(e.message); } finally { setBusy(null); }
+  }
   const save = async (patch: Partial<Job>) => setJob(await api.patch<Job>(`jobs/${id}`, patch));
   const logistics = job.type === 'logistics';
 
@@ -95,7 +105,19 @@ export default function JobDetail() {
           {!logistics && (
             <div className="card p-5 space-y-4">
               <TextBlock label="Job posting" value={job.posting_text} onSave={(v) => save({ posting_text: v })} rows={10} placeholder="Paste the full posting here. It powers matching and drafting." />
-              <TextBlock label="Match notes" value={job.match_notes} onSave={(v) => save({ match_notes: v })} rows={5} />
+              <div className="flex flex-wrap gap-2 items-center">
+                <button className="btn" disabled={!!busy} onClick={() => ai('parse')}><Sparkles size={14} /> {busy === 'parse' ? 'Reading…' : 'Parse posting'}</button>
+                <button className="btn" disabled={!!busy} onClick={() => ai('match')}><Sparkles size={14} /> {busy === 'match' ? 'Comparing…' : 'Match check'}</button>
+                {aiErr && <span className="text-sm text-red-700">{aiErr}</span>}
+              </div>
+              {job.posting_parsed && (
+                <div className="rounded-lg bg-beige p-4 text-sm space-y-2">
+                  {job.posting_parsed.summary && <p>{job.posting_parsed.summary}</p>}
+                  {!!job.posting_parsed.requirements?.length && <div><span className="label">Requirements</span><ul className="list-disc pl-5">{job.posting_parsed.requirements.map((r, i) => <li key={i}>{r}</li>)}</ul></div>}
+                  {!!job.posting_parsed.keywords?.length && <div className="flex flex-wrap gap-1.5">{job.posting_parsed.keywords.map((k) => <span key={k} className="bg-sky/70 rounded px-2 py-0.5 text-xs">{k}</span>)}</div>}
+                </div>
+              )}
+              <TextBlock label="Match notes" value={job.match_notes} onSave={(v) => save({ match_notes: v })} rows={8} />
             </div>
           )}
         </div>
@@ -103,6 +125,18 @@ export default function JobDetail() {
 
       {tab === 'Documents' && (
         <div className="space-y-4">
+          {!logistics && (
+            <div className="card p-4 space-y-3">
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="label mb-0 mr-1">Draft with AI</span>
+                <button className="btn" disabled={!!busy} onClick={() => ai('tailor', { instructions })}><Sparkles size={14} /> {busy === 'tailor' ? 'Writing…' : 'Tailored resume'}</button>
+                <button className="btn" disabled={!!busy} onClick={() => ai('cover_letter', { instructions })}><Sparkles size={14} /> {busy === 'cover_letter' ? 'Writing…' : 'Cover letter'}</button>
+                <button className="btn" disabled={!!busy} onClick={() => ai('outreach', { instructions, contact_name: job.contact_person })}><Sparkles size={14} /> {busy === 'outreach' ? 'Writing…' : 'Outreach email'}</button>
+              </div>
+              <input className="input" placeholder="Optional: extra instructions (e.g. emphasize event operations, keep it warmer)" value={instructions} onChange={(e) => setInstructions(e.target.value)} />
+              {aiErr && <p className="text-sm text-red-700">{aiErr}</p>}
+            </div>
+          )}
           <form className="card p-4 space-y-3" onSubmit={async (e) => {
             e.preventDefault();
             if (!newDoc.body.trim()) return;
