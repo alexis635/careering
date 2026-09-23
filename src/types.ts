@@ -14,11 +14,18 @@ export interface Job {
   remote_type: string; applied_date: string | null; deadline: string | null; contact_person: string;
   contact_notes: string; posting_text: string; match_notes: string; interview_prep: string;
   resume_version_id: number | null; updated_at: string;
+  fit: 'strong' | 'moderate' | 'weak' | null;
   posting_parsed: { summary?: string; requirements?: string[]; nice_to_haves?: string[]; keywords?: string[] } | null;
 }
 export interface JobDoc { id: number; kind: string; title: string; body: string; version: number; source: string; created_at: string }
 export interface JobNote { id: number; body: string; kind: string; created_at: string }
 export interface JobAction { id: number; text: string; done: boolean; due_date: string | null }
+export interface Attention {
+  deadlines: { id: number; company: string; role_title: string; stage: string; deadline: string; lane_name: string; color: string }[];
+  stale: { id: number; company: string; role_title: string; stage: string; last_activity: string; lane_name: string; color: string }[];
+  actions: { id: number; text: string; due_date: string; job_id: number; company: string; role_title: string }[];
+}
+export interface SearchHit { type: string; id: number; job_id: number | null; label: string; title: string; snippet: string }
 export interface LibItem { id: number; kind: 'bullet' | 'resume' | 'bio' | 'snippet'; title: string; body: string; tags: string[] }
 export interface JobContact { id: number; name: string; title: string; email: string; source: string; notes: string }
 export interface JobEmail { id: number; direction: 'sent' | 'received'; from_addr: string; to_addr: string; subject: string; body: string; sent_at: string; gmail_thread_id: string | null }

@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { q } from '../lib/db.js';
 import { aiRoute } from '../lib/ai-routes.js';
+import { attention } from '../lib/attention.js';
+import { search } from '../lib/search.js';
 import { HttpError } from '../lib/ai.js';
 import { authUrl, checkState, gmailStatus, handleCallback, sendEmail, syncReplies } from '../lib/gmail.js';
 import { clearSession, isAuthed, issueSession } from '../lib/auth.js';
@@ -14,7 +16,7 @@ const JOB_FIELDS = [
   'lane_id', 'type', 'company', 'role_title', 'source_link', 'stage', 'closed_outcome',
   'salary_range', 'location', 'remote_type', 'applied_date', 'deadline', 'interview_dates',
   'contact_person', 'contact_notes', 'posting_text', 'match_notes', 'resume_version_id',
-  'interview_prep',
+  'interview_prep', 'fit',
 ];
 const LANE_FIELDS = ['name', 'target_date', 'status', 'notes', 'color', 'position'];
 const LIB_FIELDS = ['kind', 'title', 'body', 'tags'];
@@ -143,6 +145,10 @@ async function route(c: Ctx): Promise<Result> {
       }
     }
   }
+
+  // ---- attention + search ----
+  if (a === 'attention' && c.method === 'GET') return { json: await attention() };
+  if (a === 'search' && c.method === 'GET') return { json: await search(c.query.get('q') || '', c.query.get('job_id') ? Number(c.query.get('job_id')) : null) };
 
   // ---- gmail ----
   if (a === 'gmail') {

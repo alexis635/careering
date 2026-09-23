@@ -1,4 +1,6 @@
 import { q } from './db.js';
+import { fetchPosting } from './posting.js';
+import { search } from './search.js';
 import { HttpError, ask, libraryContext, loadJob, parseJson, postingOrThrow, saveDoc } from './ai.js';
 
 type Body = { job_id?: number; instructions?: string; kind?: string; contact_name?: string; contact_title?: string; resume_id?: number };
@@ -6,9 +8,16 @@ type Body = { job_id?: number; instructions?: string; kind?: string; contact_nam
 const jobHeader = (j: any) => `Company: ${j.company}\nRole: ${j.role_title}\nLocation: ${j.location} ${j.remote_type}`.trim();
 
 export async function aiRoute(action: string, body: Body): Promise<any> {
+  if (action === 'ask') return askRoute(body);
   const jobId = Number(body.job_id);
   if (!jobId) throw new HttpError(400, 'job_id required');
   const job = await loadJob(jobId);
+
+  // Fetch the posting text from the job's link
+  if (action === 'fetch') {
+    const text = await fetchPosting(job.source_link);
+    return (await q(`UPDATE jobs SET posting_text=$1, updated_at=now() WHERE id=$2 RETURNING *`, [text, jobId]))[0];
+  }
   const posting = postingOrThrow(job);
 
   // 1. Posting parser
@@ -37,18 +46,20 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
 
   // 2. Match / gap check
   if (action === 'match') {
-    const out = parseJson<{ summary: string; strengths: string[]; gaps: string[]; suggested_resume_id: number | null }>(
+    const out = parseJson<{ summary: string; strengths: string[]; gaps: string[]; suggested_resume_id: number | null; fit: string }>(
       await ask(
         'Compare the job posting to the candidate material. Respond with ONLY a JSON object: ' +
           'summary (3-4 sentence honest fit assessment), strengths (string[] of requirements the material clearly supports), gaps (string[] of requirements it does not support), ' +
-          'suggested_resume_id (number id of the best RESUME VERSION as shown in [#id], or null if none fit).',
+          'suggested_resume_id (number id of the best RESUME VERSION as shown in [#id], or null if none fit), ' +
+          'fit (exactly one of "strong", "moderate", "weak": strong = most requirements clearly supported, weak = core requirements unsupported).',
         `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nCANDIDATE MATERIAL:\n${lib.text}`,
       ),
     );
     const notes = `${out.summary}\n\nStrengths:\n${out.strengths.map((s) => `- ${s}`).join('\n')}\n\nGaps:\n${out.gaps.map((s) => `- ${s}`).join('\n')}`;
     const valid = lib.resumes.some((r: any) => r.id === out.suggested_resume_id);
+    const fit = ['strong', 'moderate', 'weak'].includes(out.fit) ? out.fit : null;
     return (
-      await q(`UPDATE jobs SET match_notes=$1, resume_version_id=COALESCE($2, resume_version_id), updated_at=now() WHERE id=$3 RETURNING *`, [notes, valid ? out.suggested_resume_id : null, jobId])
+      await q(`UPDATE jobs SET match_notes=$1, resume_version_id=COALESCE($2, resume_version_id), fit=COALESCE($3, fit), updated_at=now() WHERE id=$4 RETURNING *`, [notes, valid ? out.suggested_resume_id : null, fit, jobId])
     )[0];
   }
 
@@ -82,4 +93,32 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
   }
 
   throw new HttpError(404, 'Unknown AI action');
+}
+
+/** "Ask anything": answers from the current job first, then the rest of the app. */
+async function askRoute(body: Body & { q?: string }) {
+  const question = (body.q || '').trim();
+  if (!question) throw new HttpError(400, 'Ask a question first');
+  const parts: string[] = [];
+  if (body.job_id) {
+    const job = await loadJob(Number(body.job_id));
+    const [docs, notes, actions, contacts, emails] = await Promise.all([
+      q(`SELECT kind, title, left(body, 1800) AS body FROM job_documents WHERE job_id=$1 ORDER BY created_at DESC LIMIT 6`, [job.id]),
+      q(`SELECT body, created_at FROM job_notes WHERE job_id=$1 ORDER BY created_at DESC LIMIT 15`, [job.id]),
+      q(`SELECT text, done FROM job_actions WHERE job_id=$1`, [job.id]),
+      q(`SELECT name, title, email, notes FROM job_contacts WHERE job_id=$1`, [job.id]),
+      q(`SELECT direction, from_addr, to_addr, subject, left(body, 800) AS body, sent_at FROM job_emails WHERE job_id=$1 ORDER BY sent_at DESC LIMIT 10`, [job.id]),
+    ]);
+    parts.push(`CURRENT JOB\n${JSON.stringify({ ...job, posting_text: String(job.posting_text).slice(0, 6000), posting_parsed: undefined })}\nDOCUMENTS: ${JSON.stringify(docs)}\nNOTES: ${JSON.stringify(notes)}\nNEXT ACTIONS: ${JSON.stringify(actions)}\nCONTACTS: ${JSON.stringify(contacts)}\nEMAILS: ${JSON.stringify(emails)}`);
+  }
+  const hits = (await search(question.split(/\s+/).filter((w) => w.length > 3).slice(0, 4).join(' ') || question, body.job_id ? Number(body.job_id) : null)).slice(0, 10);
+  if (hits.length) parts.push(`OTHER MATCHES ACROSS THE APP\n${hits.map((h) => `[${h.type}] ${h.label}: ${h.snippet}`).join('\n')}`);
+  const lane = await q(`SELECT l.name, count(j.id)::int AS jobs FROM lanes l LEFT JOIN jobs j ON j.lane_id=l.id GROUP BY l.id, l.name ORDER BY l.position`);
+  parts.push(`LANES: ${JSON.stringify(lane)}`);
+  const answer = await ask(
+    'Answer the user\'s question about their job search using only the material below. Be brief and specific. Name the job or lane you are talking about. If the material does not contain the answer, say so.',
+    `${parts.join('\n\n')}\n\nQUESTION: ${question}`,
+    4000,
+  );
+  return { answer };
 }

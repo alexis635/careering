@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Plus, ArrowLeft } from 'lucide-react';
 import { api } from '../api';
+import FitBadge from '../components/FitBadge';
 import { OUTCOMES, STAGES, type Job, type Lane, type Stage } from '../types';
 
 export default function LaneView() {
@@ -12,6 +13,7 @@ export default function LaneView() {
   const [form, setForm] = useState({ company: '', role_title: '', type: 'application' });
   const [dragId, setDragId] = useState<number | null>(null);
   const [hideClosed, setHideClosed] = useState(false);
+  const [sortFit, setSortFit] = useState(false);
 
   const load = () => {
     api.get<Lane>(`lanes/${id}`).then(setLane);
@@ -43,6 +45,9 @@ export default function LaneView() {
         <span className="w-3 h-8 rounded" style={{ background: lane.color }} />
         <h1 className="text-3xl font-bold">{lane.name}</h1>
         <label className="ml-auto text-sm flex items-center gap-2 text-teal">
+          <input type="checkbox" checked={sortFit} onChange={(e) => setSortFit(e.target.checked)} /> Best fit first
+        </label>
+        <label className="text-sm flex items-center gap-2 text-teal">
           <input type="checkbox" checked={hideClosed} onChange={(e) => setHideClosed(e.target.checked)} /> Hide closed
         </label>
         <button className="btn" onClick={() => setAdding((v) => !v)}><Plus size={16} /> Add</button>
@@ -71,7 +76,9 @@ export default function LaneView() {
 
       <div className="flex gap-3 overflow-x-auto pb-4">
         {stages.map((stage) => {
-          const col = jobs.filter((j) => j.stage === stage);
+          const rank = { strong: 0, moderate: 1, weak: 2 } as Record<string, number>;
+          let col = jobs.filter((j) => j.stage === stage);
+          if (sortFit) col = [...col].sort((a, b) => (rank[a.fit ?? ''] ?? 3) - (rank[b.fit ?? ''] ?? 3));
           return (
             <div
               key={stage}
@@ -95,6 +102,7 @@ export default function LaneView() {
                       <div className="text-sm text-teal leading-snug">{j.role_title}</div>
                     </Link>
                     <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                      <FitBadge fit={j.fit} />
                       {j.type === 'logistics' && <span className="text-[10px] uppercase bg-beige rounded px-1.5 py-0.5">logistics</span>}
                       {stage === 'Closed' ? (
                         <select className="text-xs bg-beige rounded px-1 py-0.5" value={j.closed_outcome ?? 'Lost'} onChange={(e) => move(j, 'Closed', e.target.value)}>

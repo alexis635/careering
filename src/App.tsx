@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Route, Routes } from 'react-router-dom';
+import { NavLink, Route, Routes, useMatch, useNavigate } from 'react-router-dom';
 import { api } from './api';
 import Lanes from './pages/Lanes';
 import LaneView from './pages/LaneView';
 import JobDetail from './pages/JobDetail';
 import Library from './pages/Library';
+import Search from './pages/Search';
 
 function Login({ onDone }: { onDone: () => void }) {
   const [pw, setPw] = useState('');
@@ -24,6 +25,18 @@ function Login({ onDone }: { onDone: () => void }) {
         <button className="btn w-full justify-center">Sign in</button>
       </form>
     </div>
+  );
+}
+
+function HeaderSearch() {
+  const nav = useNavigate();
+  const onJob = useMatch('/jobs/:id');
+  const [term, setTerm] = useState('');
+  return (
+    <form className="ml-auto" onSubmit={(e) => { e.preventDefault(); if (term.trim()) nav(`/search?q=${encodeURIComponent(term.trim())}${onJob ? `&job=${onJob.params.id}` : ''}`); }}>
+      <input value={term} onChange={(e) => setTerm(e.target.value)} placeholder={onJob ? 'Search or ask (this job first)…' : 'Search or ask anything…'}
+        className="w-56 md:w-72 rounded-lg bg-white/10 text-white placeholder:text-sky/70 px-3 py-1.5 text-sm focus:outline-none focus:bg-white/20" />
+    </form>
   );
 }
 
@@ -47,7 +60,8 @@ export default function App() {
             <NavLink to="/" end className={link}>Lanes</NavLink>
             <NavLink to="/library" className={link}>Library</NavLink>
           </nav>
-          <button className="ml-auto text-sm text-sky hover:text-white" onClick={async () => { await api.post('logout'); setAuthed(false); }}>
+          <HeaderSearch />
+          <button className="text-sm text-sky hover:text-white" onClick={async () => { await api.post('logout'); setAuthed(false); }}>
             Sign out
           </button>
         </div>
@@ -58,6 +72,7 @@ export default function App() {
           <Route path="/lanes/:id" element={<LaneView />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
           <Route path="/library" element={<Library />} />
+          <Route path="/search" element={<Search />} />
         </Routes>
       </main>
     </div>

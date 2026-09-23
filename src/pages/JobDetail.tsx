@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ArrowLeft, Download, ExternalLink, Mail, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '../api';
+import FitBadge from '../components/FitBadge';
 import type { Job, JobAction, JobContact, JobDoc, JobEmail, JobNote } from '../types';
 
 const TABS = ['Overview', 'Contacts', 'Emails', 'Documents', 'Interview Prep', 'Notes Log', 'Next Actions'] as const;
@@ -40,6 +41,7 @@ export default function JobDetail() {
   const [actions, setActions] = useState<JobAction[]>([]);
   const [newNote, setNewNote] = useState('');
   const [newAction, setNewAction] = useState('');
+  const [newActionDue, setNewActionDue] = useState('');
   const [newDoc, setNewDoc] = useState({ kind: 'resume', title: '', body: '' });
   const [openDoc, setOpenDoc] = useState<number | null>(null);
   const [contacts, setContacts] = useState<JobContact[]>([]);
@@ -86,7 +88,7 @@ export default function JobDetail() {
     setBusy(action); setAiErr('');
     try {
       const out = await api.post<any>(`ai/${action}`, { job_id: Number(id), ...extra });
-      if (['parse', 'match'].includes(action)) setJob(out); else { loadKids(); setTab('Documents'); setOpenDoc(out.id); }
+      if (['parse', 'match', 'fetch'].includes(action)) setJob(out); else { loadKids(); setTab('Documents'); setOpenDoc(out.id); }
     } catch (e: any) { setAiErr(e.message); } finally { setBusy(null); }
   }
   const save = async (patch: Partial<Job>) => setJob(await api.patch<Job>(`jobs/${id}`, patch));
@@ -135,6 +137,7 @@ export default function JobDetail() {
             <div className="card p-5 space-y-4">
               <TextBlock label="Job posting" value={job.posting_text} onSave={(v) => save({ posting_text: v })} rows={10} placeholder="Paste the full posting here. It powers matching and drafting." />
               <div className="flex flex-wrap gap-2 items-center">
+                {job.source_link && <button className="btn-ghost" disabled={!!busy} onClick={() => ai('fetch')}>{busy === 'fetch' ? 'Fetching…' : 'Fetch posting from link'}</button>}
                 <button className="btn" disabled={!!busy} onClick={() => ai('parse')}><Sparkles size={14} /> {busy === 'parse' ? 'Reading…' : 'Parse posting'}</button>
                 <button className="btn" disabled={!!busy} onClick={() => ai('match')}><Sparkles size={14} /> {busy === 'match' ? 'Comparing…' : 'Match check'}</button>
                 {aiErr && <span className="text-sm text-red-700">{aiErr}</span>}
@@ -146,6 +149,14 @@ export default function JobDetail() {
                   {!!job.posting_parsed.keywords?.length && <div className="flex flex-wrap gap-1.5">{job.posting_parsed.keywords.map((k) => <span key={k} className="bg-sky/70 rounded px-2 py-0.5 text-xs">{k}</span>)}</div>}
                 </div>
               )}
+              <div className="flex items-center gap-3">
+                <label className="label mb-0">Fit</label>
+                <select className="input w-44" value={job.fit ?? ''} onChange={(e) => save({ fit: (e.target.value || null) as Job['fit'] })}>
+                  <option value="">Not rated</option><option value="strong">Strong</option><option value="moderate">Moderate</option><option value="weak">Weak</option>
+                </select>
+                <FitBadge fit={job.fit} />
+                <span className="text-xs text-teal">Set by Match check; change it any time.</span>
+              </div>
               <TextBlock label="Match notes" value={job.match_notes} onSave={(v) => save({ match_notes: v })} rows={8} />
             </div>
           )}
@@ -319,8 +330,9 @@ export default function JobDetail() {
 
       {tab === 'Next Actions' && (
         <div className="card p-5">
-          <form className="flex gap-2 mb-4" onSubmit={async (e) => { e.preventDefault(); if (!newAction.trim()) return; await api.post(`jobs/${id}/actions`, { text: newAction }); setNewAction(''); loadKids(); }}>
+          <form className="flex gap-2 mb-4" onSubmit={async (e) => { e.preventDefault(); if (!newAction.trim()) return; await api.post(`jobs/${id}/actions`, { text: newAction, due_date: newActionDue || null }); setNewAction(''); setNewActionDue(''); loadKids(); }}>
             <input className="input" placeholder="Add a next action…" value={newAction} onChange={(e) => setNewAction(e.target.value)} />
+            <input className="input w-40" type="date" title="Due date (optional)" value={newActionDue} onChange={(e) => setNewActionDue(e.target.value)} />
             <button className="btn">Add</button>
           </form>
           <ul className="space-y-2">
@@ -328,6 +340,7 @@ export default function JobDetail() {
               <li key={a.id} className="flex items-center gap-3">
                 <input type="checkbox" checked={a.done} onChange={async (e) => { setActions((xs) => xs.map((x) => (x.id === a.id ? { ...x, done: e.target.checked } : x))); await api.patch(`jobs/${id}/actions/${a.id}`, { done: e.target.checked }); }} />
                 <span className={`flex-1 text-sm ${a.done ? 'line-through text-teal' : ''}`}>{a.text}</span>
+                {a.due_date && <span className="text-xs text-teal">due {format(new Date(a.due_date.slice(0, 10) + 'T12:00:00'), 'MMM d')}</span>}
                 <button className="text-teal hover:text-navy" onClick={async () => { await api.del(`jobs/${id}/actions/${a.id}`); loadKids(); }}><Trash2 size={14} /></button>
               </li>
             ))}
