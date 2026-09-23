@@ -21,3 +21,4 @@ export interface JobNote { id: number; body: string; kind: string; created_at: s
 export interface JobAction { id: number; text: string; done: boolean; due_date: string | null }
 export interface LibItem { id: number; kind: 'bullet' | 'resume' | 'bio' | 'snippet'; title: string; body: string; tags: string[] }
 export interface JobContact { id: number; name: string; title: string; email: string; source: string; notes: string }
+export interface JobEmail { id: number; direction: 'sent' | 'received'; from_addr: string; to_addr: string; subject: string; body: string; sent_at: string; gmail_thread_id: string | null }

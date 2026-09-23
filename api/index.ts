@@ -2,9 +2,10 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { q } from '../lib/db.js';
 import { aiRoute } from '../lib/ai-routes.js';
 import { HttpError } from '../lib/ai.js';
+import { authUrl, checkState, gmailStatus, handleCallback, sendEmail, syncReplies } from '../lib/gmail.js';
 import { clearSession, isAuthed, issueSession } from '../lib/auth.js';
 
-type Ctx = { method: string; parts: string[]; body: any; query: URLSearchParams };
+type Ctx = { method: string; parts: string[]; body: any; query: URLSearchParams; host: string };
 type Result = { status?: number; json: any; cookie?: string };
 
 const STAGES = ['Saved', 'Applied', 'Screening', 'Interviewing', 'Offer', 'Closed'];
@@ -143,6 +144,14 @@ async function route(c: Ctx): Promise<Result> {
     }
   }
 
+  // ---- gmail ----
+  if (a === 'gmail') {
+    if (b === 'status') return { json: await gmailStatus() };
+    if (b === 'connect') return { json: { url: authUrl(c.host) } };
+    if (b === 'send' && c.method === 'POST') return { json: await sendEmail(Number(c.body.job_id), c.body.to, c.body.subject, c.body.body) };
+    if (b === 'sync' && c.method === 'POST') return { json: await syncReplies(Number(c.body.job_id)) };
+  }
+
   // ---- ai ----
   if (a === 'ai' && b && c.method === 'POST') return { json: await aiRoute(b, c.body) };
 
@@ -208,8 +217,16 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
 
     if (!(await isAuthed(req.headers.cookie))) return send({ status: 401, json: { error: 'Not signed in' } });
 
+    if (parts[0] === 'gmail' && parts[1] === 'callback') {
+      const host = String(req.headers['x-forwarded-host'] || req.headers.host || '');
+      const code = url.searchParams.get('code');
+      if (!code || !checkState(url.searchParams.get('state') || '')) return send({ status: 400, json: { error: 'Invalid Gmail callback' } });
+      await handleCallback(code, host);
+      res.statusCode = 302; res.setHeader('Location', '/?gmail=connected'); return res.end();
+    }
+
     const body = method === 'GET' || method === 'DELETE' ? {} : await readBody(req);
-    send(await route({ method, parts, body, query: url.searchParams }));
+    send(await route({ method, parts, body, query: url.searchParams, host: String(req.headers['x-forwarded-host'] || req.headers.host || '') }));
   } catch (e: any) {
     console.error(e);
     send({ status: e instanceof HttpError ? e.status : 500, json: { error: e?.message || 'Server error' } });

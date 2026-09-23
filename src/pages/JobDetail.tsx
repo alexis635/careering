@@ -3,9 +3,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ArrowLeft, ExternalLink, Mail, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '../api';
-import type { Job, JobAction, JobContact, JobDoc, JobNote } from '../types';
+import type { Job, JobAction, JobContact, JobDoc, JobEmail, JobNote } from '../types';
 
-const TABS = ['Overview', 'Contacts', 'Documents', 'Interview Prep', 'Notes Log', 'Next Actions'] as const;
+const TABS = ['Overview', 'Contacts', 'Emails', 'Documents', 'Interview Prep', 'Notes Log', 'Next Actions'] as const;
 type Tab = (typeof TABS)[number];
 
 function Field({ label, value, onSave, type = 'text', wide = false }: { label: string; value: string | null; onSave: (v: string) => void; type?: string; wide?: boolean }) {
@@ -44,6 +44,10 @@ export default function JobDetail() {
   const [openDoc, setOpenDoc] = useState<number | null>(null);
   const [contacts, setContacts] = useState<JobContact[]>([]);
   const [newContact, setNewContact] = useState({ name: '', title: '', email: '', notes: '' });
+  const [emails, setEmails] = useState<JobEmail[]>([]);
+  const [gmail, setGmail] = useState<{ connected: boolean; email: string | null } | null>(null);
+  const [compose, setCompose] = useState({ to: '', subject: '', body: '' });
+  const [mailMsg, setMailMsg] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [aiErr, setAiErr] = useState('');
   const [instructions, setInstructions] = useState('');
@@ -52,11 +56,31 @@ export default function JobDetail() {
     api.get<JobDoc[]>(`jobs/${id}/documents`).then(setDocs);
     api.get<JobNote[]>(`jobs/${id}/notes`).then(setNotes);
     api.get<JobContact[]>(`jobs/${id}/contacts`).then(setContacts);
+    api.get<JobEmail[]>(`jobs/${id}/emails`).then(setEmails);
     api.get<JobAction[]>(`jobs/${id}/actions`).then(setActions);
   };
+  useEffect(() => { api.get<{ connected: boolean; email: string | null }>('gmail/status').then(setGmail).catch(() => setGmail({ connected: false, email: null })); }, []);
   useEffect(() => { api.get<Job>(`jobs/${id}`).then(setJob); loadKids(); }, [id]);
 
   if (!job) return null;
+  function useInEmail(d: JobDoc) {
+    const m = d.body.match(/^Subject:\s*(.+)\n+/i);
+    setCompose({ to: contacts.find((c) => c.email)?.email ?? '', subject: m ? m[1].trim() : '', body: (m ? d.body.slice(m[0].length) : d.body).trim() });
+    setMailMsg(''); setTab('Emails');
+  }
+  async function sendMail() {
+    if (!confirm(`Send this email to ${compose.to} from ${gmail?.email}?`)) return;
+    setBusy('send'); setMailMsg('');
+    try {
+      await api.post('gmail/send', { job_id: Number(id), ...compose });
+      setCompose({ to: '', subject: '', body: '' }); setMailMsg('Sent.'); loadKids();
+    } catch (e: any) { setMailMsg(e.message); } finally { setBusy(null); }
+  }
+  async function syncMail() {
+    setBusy('sync'); setMailMsg('');
+    try { const r = await api.post<{ added: number }>('gmail/sync', { job_id: Number(id) }); setMailMsg(r.added ? `${r.added} new repl${r.added === 1 ? 'y' : 'ies'}.` : 'No new replies.'); loadKids(); }
+    catch (e: any) { setMailMsg(e.message); } finally { setBusy(null); }
+  }
   async function ai(action: string, extra: Record<string, unknown> = {}) {
     setBusy(action); setAiErr('');
     try {
@@ -161,6 +185,47 @@ export default function JobDetail() {
         </div>
       )}
 
+      {tab === 'Emails' && (
+        <div className="space-y-4">
+          {gmail && !gmail.connected && (
+            <div className="card p-5 flex items-center gap-4">
+              <p className="text-sm flex-1">Connect alexisdgranville@gmail.com to send outreach from Careering. Only replies to emails sent from this app are ever read.</p>
+              <button className="btn" onClick={async () => { const r = await api.get<{ url: string }>('gmail/connect'); window.location.href = r.url; }}>Connect Gmail</button>
+            </div>
+          )}
+          {gmail?.connected && (
+            <form className="card p-4 space-y-3" onSubmit={(e) => { e.preventDefault(); sendMail(); }}>
+              <div className="text-xs text-teal">Sending from {gmail.email}</div>
+              <input className="input" type="email" required placeholder="To" value={compose.to} onChange={(e) => setCompose({ ...compose, to: e.target.value })} />
+              <input className="input" required placeholder="Subject" value={compose.subject} onChange={(e) => setCompose({ ...compose, subject: e.target.value })} />
+              <textarea className="input" rows={9} required placeholder="Write here, or open an outreach draft under Documents and click Use in email." value={compose.body} onChange={(e) => setCompose({ ...compose, body: e.target.value })} />
+              <div className="flex items-center gap-3">
+                <button className="btn" disabled={busy === 'send'}><Mail size={14} /> {busy === 'send' ? 'Sending…' : 'Send'}</button>
+                {mailMsg && <span className="text-sm text-teal">{mailMsg}</span>}
+              </div>
+            </form>
+          )}
+          {gmail?.connected && (
+            <div className="flex items-center gap-3">
+              <button className="btn-ghost" disabled={busy === 'sync'} onClick={syncMail}>{busy === 'sync' ? 'Checking…' : 'Check for replies'}</button>
+              {!compose.body && mailMsg && <span className="text-sm text-teal">{mailMsg}</span>}
+            </div>
+          )}
+          {emails.length === 0 && gmail?.connected && <p className="text-sm text-teal">Nothing sent for this job yet.</p>}
+          {emails.map((m) => (
+            <div key={m.id} className={`card p-4 ${m.direction === 'received' ? 'ml-8 border-l-4 border-l-teal' : ''}`}>
+              <div className="flex flex-wrap gap-x-3 text-xs text-teal mb-1">
+                <span className="font-semibold uppercase">{m.direction === 'received' ? 'Reply' : 'Sent'}</span>
+                <span>{m.direction === 'received' ? `from ${m.from_addr}` : `to ${m.to_addr}`}</span>
+                <span className="ml-auto">{format(new Date(m.sent_at), 'MMM d, h:mm a')}</span>
+              </div>
+              <div className="font-medium text-sm">{m.subject}</div>
+              <p className="whitespace-pre-wrap text-sm mt-1">{m.body}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       {tab === 'Documents' && (
         <div className="space-y-4">
           {!logistics && (
@@ -201,7 +266,10 @@ export default function JobDetail() {
               {openDoc === d.id && (
                 <>
                   <pre className="whitespace-pre-wrap text-sm mt-3 font-sans">{d.body}</pre>
-                  <button className="btn-ghost mt-3" onClick={async () => { await api.del(`jobs/${id}/documents/${d.id}`); loadKids(); }}><Trash2 size={13} /> Delete</button>
+                  <div className="flex gap-2 mt-3">
+                    {d.kind === 'outreach' && <button className="btn" onClick={() => useInEmail(d)}><Mail size={13} /> Use in email</button>}
+                    <button className="btn-ghost" onClick={async () => { await api.del(`jobs/${id}/documents/${d.id}`); loadKids(); }}><Trash2 size={13} /> Delete</button>
+                  </div>
                 </>
               )}
             </div>
