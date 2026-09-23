@@ -17,7 +17,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
       await ask(
         'Extract structured data from a job posting. Respond with ONLY a JSON object with keys: ' +
           'role (string), company (string), location (string), remote_type (string: remote/hybrid/onsite/unknown), salary_range (string, empty if not stated), ' +
-          'summary (2 sentence plain summary), requirements (string[] of must-haves), nice_to_haves (string[]), keywords (string[] of skills/terms an ATS would scan for), deadline (YYYY-MM-DD or empty).',
+          'summary (2 sentence plain summary), requirements (string[] of must-have skills, experience, and qualifications only; leave out physical demands, work schedule or travel boilerplate, and benefits), nice_to_haves (string[]), keywords (string[] of skills/terms an ATS would scan for), deadline (YYYY-MM-DD or empty).',
         posting,
       ),
     );
@@ -63,7 +63,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
         'Choose and lightly reword bullets from the BULLET BANK and the chosen resume version so they speak to the posting. Mirror the posting\'s keywords only where the material supports them. Keep facts, dates, and numbers unchanged. Strongest matches first. Must fit one page.' +
         (body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''),
       `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nBASE RESUME FRAMING:\n${framing ? framing.body : '(none chosen, use the bullet bank)'}\n\nCANDIDATE MATERIAL:\n${lib.text}`,
-      3500,
+      9000,
     );
     return saveDoc(jobId, 'resume', `Tailored resume for ${job.company || 'job'}`, text);
   }
@@ -76,7 +76,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
         ? 'Write a short outreach email (under 130 words) to a hiring manager or recruiter. First line: "Subject: ...". Open with a specific reason for reaching out, give one or two relevant proof points from the candidate material, and end with a low-pressure ask. Sound like a person, not a template.'
         : 'Write a cover letter (250-330 words). Open with a specific hook about the company or role, connect two or three real accomplishments from the candidate material to the posting\'s top needs, close briefly. No "I am writing to apply" opener.',
       `${jobHeader(job)}\n${isOutreach && body.contact_name ? `Recipient: ${body.contact_name}${body.contact_title ? `, ${body.contact_title}` : ''}\n` : ''}\nJOB POSTING:\n${posting}\n\nCANDIDATE MATERIAL:\n${lib.text}${body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''}`,
-      1500,
+      6000,
     );
     return saveDoc(jobId, isOutreach ? 'outreach' : 'cover_letter', `${isOutreach ? 'Outreach email' : 'Cover letter'} for ${job.company || 'job'}`, text);
   }

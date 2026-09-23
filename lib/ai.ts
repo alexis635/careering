@@ -17,14 +17,18 @@ const GROUNDING =
   'Never invent employers, titles, dates, metrics, degrees, or skills. If the material does not support a requirement, say so plainly instead of stretching. ' +
   'Write in a natural, direct voice. Avoid filler and buzzwords.';
 
-export async function ask(system: string, user: string, maxTokens = 2500): Promise<string> {
+export async function ask(system: string, user: string, maxTokens = 6000): Promise<string> {
   const res = await client().messages.create({
     model: MODEL,
-    max_tokens: maxTokens,
+    // Sonnet 5 can spend part of max_tokens thinking before it writes, so leave generous room.
+    max_tokens: Math.max(maxTokens, 6000),
     system: `${GROUNDING}\n\n${system}`,
     messages: [{ role: 'user', content: user }],
   });
-  return res.content.map((b) => (b.type === 'text' ? b.text : '')).join('').trim();
+  const text = res.content.map((b) => (b.type === 'text' ? b.text : '')).join('').trim();
+  if (!text) throw new HttpError(502, 'The AI returned nothing this time. Please try again.');
+  if (res.stop_reason === 'max_tokens') throw new HttpError(502, 'The AI ran out of room before finishing. Please try again.');
+  return text;
 }
 
 export function parseJson<T>(text: string): T {
