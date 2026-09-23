@@ -111,7 +111,7 @@ async function route(c: Ctx): Promise<Result> {
           job_documents: ['kind', 'title', 'body', 'source'],
           job_notes: ['body', 'kind'],
           job_actions: ['text', 'due_date'],
-          job_contacts: ['name', 'title', 'email', 'source'],
+          job_contacts: ['name', 'title', 'email', 'source', 'notes'],
           job_emails: ['direction', 'from_addr', 'to_addr', 'subject', 'body', 'gmail_thread_id'],
         };
         const body = { ...c.body, job_id: id };
@@ -136,7 +136,7 @@ async function route(c: Ctx): Promise<Result> {
           return { json: s ? (await q(s.text, s.vals))[0] : null };
         }
         if (table === 'job_contacts') {
-          const s = buildUpdate(table, ['name', 'title', 'email'], rid, c.body);
+          const s = buildUpdate(table, ['name', 'title', 'email', 'notes'], rid, c.body);
           return { json: s ? (await q(s.text, s.vals))[0] : null };
         }
       }

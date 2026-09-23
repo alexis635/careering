@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ArrowLeft, ExternalLink, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Mail, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '../api';
-import type { Job, JobAction, JobDoc, JobNote } from '../types';
+import type { Job, JobAction, JobContact, JobDoc, JobNote } from '../types';
 
-const TABS = ['Overview', 'Documents', 'Interview Prep', 'Notes Log', 'Next Actions'] as const;
+const TABS = ['Overview', 'Contacts', 'Documents', 'Interview Prep', 'Notes Log', 'Next Actions'] as const;
 type Tab = (typeof TABS)[number];
 
 function Field({ label, value, onSave, type = 'text', wide = false }: { label: string; value: string | null; onSave: (v: string) => void; type?: string; wide?: boolean }) {
@@ -42,6 +42,8 @@ export default function JobDetail() {
   const [newAction, setNewAction] = useState('');
   const [newDoc, setNewDoc] = useState({ kind: 'resume', title: '', body: '' });
   const [openDoc, setOpenDoc] = useState<number | null>(null);
+  const [contacts, setContacts] = useState<JobContact[]>([]);
+  const [newContact, setNewContact] = useState({ name: '', title: '', email: '', notes: '' });
   const [busy, setBusy] = useState<string | null>(null);
   const [aiErr, setAiErr] = useState('');
   const [instructions, setInstructions] = useState('');
@@ -49,6 +51,7 @@ export default function JobDetail() {
   const loadKids = () => {
     api.get<JobDoc[]>(`jobs/${id}/documents`).then(setDocs);
     api.get<JobNote[]>(`jobs/${id}/notes`).then(setNotes);
+    api.get<JobContact[]>(`jobs/${id}/contacts`).then(setContacts);
     api.get<JobAction[]>(`jobs/${id}/actions`).then(setActions);
   };
   useEffect(() => { api.get<Job>(`jobs/${id}`).then(setJob); loadKids(); }, [id]);
@@ -80,6 +83,7 @@ export default function JobDetail() {
         {TABS.map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`px-3.5 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${tab === t ? 'border-navy font-semibold' : 'border-transparent text-teal hover:text-navy'}`}>
             {t}
+            {t === 'Contacts' && contacts.length > 0 && <span className="ml-1.5 text-xs text-teal">{contacts.length}</span>}
             {t === 'Documents' && docs.length > 0 && <span className="ml-1.5 text-xs text-teal">{docs.length}</span>}
             {t === 'Next Actions' && actions.some((a) => !a.done) && <span className="ml-1.5 text-xs text-teal">{actions.filter((a) => !a.done).length}</span>}
           </button>
@@ -120,6 +124,40 @@ export default function JobDetail() {
               <TextBlock label="Match notes" value={job.match_notes} onSave={(v) => save({ match_notes: v })} rows={8} />
             </div>
           )}
+        </div>
+      )}
+
+      {tab === 'Contacts' && (
+        <div className="space-y-4">
+          <form className="card p-4 grid gap-3 sm:grid-cols-2" onSubmit={async (e) => {
+            e.preventDefault();
+            if (!newContact.name.trim() && !newContact.email.trim()) return;
+            await api.post(`jobs/${id}/contacts`, newContact);
+            setNewContact({ name: '', title: '', email: '', notes: '' }); loadKids();
+          }}>
+            <div><label className="label">Name</label><input className="input" value={newContact.name} onChange={(e) => setNewContact({ ...newContact, name: e.target.value })} /></div>
+            <div><label className="label">Title</label><input className="input" value={newContact.title} onChange={(e) => setNewContact({ ...newContact, title: e.target.value })} /></div>
+            <div><label className="label">Email</label><input className="input" type="email" value={newContact.email} onChange={(e) => setNewContact({ ...newContact, email: e.target.value })} /></div>
+            <div><label className="label">Where you found them</label><input className="input" placeholder="Apollo, LinkedIn, referral…" value={newContact.notes} onChange={(e) => setNewContact({ ...newContact, notes: e.target.value })} /></div>
+            <div className="sm:col-span-2"><button className="btn"><Plus size={14} /> Add contact</button></div>
+          </form>
+          {aiErr && <p className="text-sm text-red-700">{aiErr}</p>}
+          {contacts.length === 0 && <p className="text-teal text-sm">No contacts yet. Add hiring managers or recruiters you find, then draft outreach to each.</p>}
+          {contacts.map((c) => (
+            <div key={c.id} className="card p-4 flex flex-wrap items-center gap-3">
+              <div className="flex-1 min-w-48">
+                <div className="font-medium">{c.name || c.email}</div>
+                <div className="text-sm text-teal">{c.title}{c.title && c.email ? ' · ' : ''}{c.email}</div>
+                {c.notes && <div className="text-xs text-teal mt-0.5">{c.notes}</div>}
+              </div>
+              {!logistics && (
+                <button className="btn" disabled={!!busy} onClick={() => ai('outreach', { instructions, contact_name: c.name, contact_title: c.title })}>
+                  <Mail size={14} /> {busy === 'outreach' ? 'Writing…' : 'Draft outreach'}
+                </button>
+              )}
+              <button className="text-teal hover:text-navy" onClick={async () => { await api.del(`jobs/${id}/contacts/${c.id}`); loadKids(); }}><Trash2 size={15} /></button>
+            </div>
+          ))}
         </div>
       )}
 

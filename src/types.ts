@@ -20,3 +20,4 @@ export interface JobDoc { id: number; kind: string; title: string; body: string;
 export interface JobNote { id: number; body: string; kind: string; created_at: string }
 export interface JobAction { id: number; text: string; done: boolean; due_date: string | null }
 export interface LibItem { id: number; kind: 'bullet' | 'resume' | 'bio' | 'snippet'; title: string; body: string; tags: string[] }
+export interface JobContact { id: number; name: string; title: string; email: string; source: string; notes: string }
