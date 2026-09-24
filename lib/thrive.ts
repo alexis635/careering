@@ -3,10 +3,11 @@ import { HttpError } from './ai.js';
 import { noDash } from '../src/lib/noDash.js';
 
 const D = (v: any) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
-const KINDS = ['task', 'goal', 'note', 'contact'];
+const KINDS = ['task', 'goal', 'note', 'contact', 'event', 'project', 'document', 'stakeholder', 'risk', 'course', 'lesson', 'cert', 'client', 'deliverable', 'invoice'];
+const JOB_TYPES = ['general', 'pm', 'teaching', 'freelance'];
 const clean = (v: any, n: number) => noDash(String(v ?? '')).trim().slice(0, n);
 
-const WS = `w.id, w.role_id, w.responsibilities, w.wrapup, w.wrapped_up_at, w.created_at, w.deleted_at,
+const WS = `w.id, w.role_id, w.kind AS job_type, w.responsibilities, w.wrapup, w.wrapped_up_at, w.created_at, w.deleted_at,
   r.employer, r.title, to_char(r.start_date,'YYYY-MM-DD') AS start_date, to_char(r.end_date,'YYYY-MM-DD') AS end_date`;
 const ITEM = `id, workspace_id, kind, title, body, to_char(due_on,'YYYY-MM-DD') AS due_on, done_at, extra, created_at, deleted_at`;
 
@@ -28,7 +29,7 @@ export async function createWorkspace(b: any) {
   }
   const have = (await q(`SELECT id FROM workspaces WHERE role_id=$1 AND deleted_at IS NULL`, [roleId]))[0];
   if (have) throw new HttpError(409, 'That job already has a workspace');
-  const id = (await q(`INSERT INTO workspaces (role_id) VALUES ($1) RETURNING id`, [roleId]))[0].id;
+  const id = (await q(`INSERT INTO workspaces (role_id, kind) VALUES ($1,$2) RETURNING id`, [roleId, JOB_TYPES.includes(b.job_type) ? b.job_type : 'general']))[0].id;
   return getWorkspace(id);
 }
 
@@ -41,11 +42,12 @@ export async function getWorkspace(id: number) {
 
 export async function updateWorkspace(id: number, b: any) {
   await q(`UPDATE workspaces SET
+      kind = COALESCE($6, kind),
       responsibilities = COALESCE($2, responsibilities),
       wrapup = COALESCE($3::jsonb, wrapup),
       wrapped_up_at = CASE WHEN $4::boolean THEN $5::timestamptz ELSE wrapped_up_at END
     WHERE id=$1`,
-    [id, 'responsibilities' in b ? clean(b.responsibilities, 8000) : null, b.wrapup && typeof b.wrapup === 'object' ? JSON.stringify(b.wrapup) : null, 'wrapped_up_at' in b, b.wrapped_up_at ? new Date().toISOString() : null]);
+    [id, 'responsibilities' in b ? clean(b.responsibilities, 8000) : null, b.wrapup && typeof b.wrapup === 'object' ? JSON.stringify(b.wrapup) : null, 'wrapped_up_at' in b, b.wrapped_up_at ? new Date().toISOString() : null, JOB_TYPES.includes(b.job_type) ? b.job_type : null]);
   return getWorkspace(id);
 }
 

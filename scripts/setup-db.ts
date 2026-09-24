@@ -196,6 +196,7 @@ const statements = [
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at TIMESTAMPTZ
   )`,
+  `ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'general'`,
   `CREATE TABLE IF NOT EXISTS decks (
     id SERIAL PRIMARY KEY,
     job_id INT REFERENCES jobs(id) ON DELETE CASCADE,

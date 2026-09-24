@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../api';
 import type { Role, Workspace } from '../types';
+import { JOB_TYPES } from './Workspace';
 
 const fmt = (d: string | null) => (d ? format(new Date(d + 'T00:00:00'), 'MMM yyyy') : '');
 
@@ -12,7 +13,7 @@ export default function Thrive() {
   const [gone, setGone] = useState<Workspace[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ role_id: '', employer: '', title: '', start_date: '' });
+  const [form, setForm] = useState({ role_id: '', employer: '', title: '', start_date: '', job_type: 'general' });
   const [err, setErr] = useState('');
   const load = () => {
     api.get<Workspace[]>('workspaces').then(setList);
@@ -25,7 +26,7 @@ export default function Thrive() {
   const free = roles.filter((r) => !used.has(r.id) && !r.end_date);
   async function create() {
     setErr('');
-    try { const w = await api.post<Workspace>('workspaces', form.role_id ? { role_id: Number(form.role_id) } : { employer: form.employer, title: form.title, start_date: form.start_date || null }); nav(`/thrive/${w.id}`); }
+    try { const w = await api.post<Workspace>('workspaces', form.role_id ? { role_id: Number(form.role_id), job_type: form.job_type } : { employer: form.employer, title: form.title, start_date: form.start_date || null, job_type: form.job_type }); nav(`/thrive/${w.id}`); }
     catch (e: any) { setErr(e.message); }
   }
   const active = (list ?? []).filter((w) => !w.wrapped_up_at);
@@ -69,6 +70,7 @@ export default function Thrive() {
               <input className="input" type="date" title="Start date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
             </div>
           )}
+          <select className="input" value={form.job_type} onChange={(e) => setForm({ ...form, job_type: e.target.value })}>{Object.entries(JOB_TYPES).map(([k, v]) => <option key={k} value={k}>Job type: {v}</option>)}</select>
           <div className="flex items-center gap-3">
             <button className="btn" disabled={!form.role_id && !form.employer.trim()} onClick={create}>Create workspace</button>
             <button className="btn-ghost" onClick={() => { setAdding(false); setErr(''); }}>Cancel</button>
