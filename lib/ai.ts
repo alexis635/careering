@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { q } from './db.js';
+import { noDash } from '../src/lib/noDash.js';
 
 export const MODEL = process.env.CAREERING_MODEL || 'claude-sonnet-5';
 
@@ -15,7 +16,8 @@ export class HttpError extends Error {
 const GROUNDING =
   'You help with a job search. Use ONLY facts found in the candidate material provided. ' +
   'Never invent employers, titles, dates, metrics, degrees, or skills. If the material does not support a requirement, say so plainly instead of stretching. ' +
-  'Write in a natural, direct voice. Avoid filler and buzzwords.';
+  'Write in a natural, direct voice. Avoid filler and buzzwords. ' +
+  'NEVER use em dashes or en dashes anywhere in your output. Use commas, periods, colons, or the word "to" for ranges (for example "Apr 2023 to May 2026").';
 
 export async function ask(system: string, user: string, maxTokens = 6000): Promise<string> {
   const res = await client().messages.create({
@@ -25,7 +27,7 @@ export async function ask(system: string, user: string, maxTokens = 6000): Promi
     system: `${GROUNDING}\n\n${system}`,
     messages: [{ role: 'user', content: user }],
   });
-  const text = res.content.map((b) => (b.type === 'text' ? b.text : '')).join('').trim();
+  const text = noDash(res.content.map((b) => (b.type === 'text' ? b.text : '')).join('').trim());
   if (!text) throw new HttpError(502, 'The AI returned nothing this time. Please try again.');
   if (res.stop_reason === 'max_tokens') throw new HttpError(502, 'The AI ran out of room before finishing. Please try again.');
   return text;
@@ -66,7 +68,7 @@ export async function saveDoc(jobId: number, kind: string, title: string, body: 
   return (
     await q(
       `INSERT INTO job_documents (job_id, kind, title, body, version, source) VALUES ($1,$2,$3,$4,$5,'ai') RETURNING *`,
-      [jobId, kind, title, body, v[0].v],
+      [jobId, kind, noDash(title), noDash(body), v[0].v],
     )
   )[0];
 }

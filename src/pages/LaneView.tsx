@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Plus, ArrowLeft } from 'lucide-react';
 import { api } from '../api';
 import FitBadge from '../components/FitBadge';
@@ -10,7 +10,11 @@ export default function LaneView() {
   const [lane, setLane] = useState<Lane | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ company: '', role_title: '', type: 'application' });
+  const nav = useNavigate();
+  const [form, setForm] = useState({ company: '', role_title: '', type: 'application', source_link: '' });
+  const [progress, setProgress] = useState('');
+  const [importErr, setImportErr] = useState('');
+  const [newId, setNewId] = useState<number | null>(null);
   const [dragId, setDragId] = useState<number | null>(null);
   const [hideClosed, setHideClosed] = useState(false);
   const [sortFit, setSortFit] = useState(false);
@@ -23,9 +27,23 @@ export default function LaneView() {
 
   async function addJob(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.company.trim() && !form.role_title.trim()) return;
-    await api.post('jobs', { ...form, lane_id: Number(id) });
-    setForm({ company: '', role_title: '', type: form.type }); setAdding(false); load();
+    const link = form.source_link.trim();
+    if (!link && !form.company.trim() && !form.role_title.trim()) return;
+    setImportErr(''); setNewId(null);
+    const job = await api.post<Job>('jobs', { ...form, source_link: link, lane_id: Number(id) });
+    if (form.type === 'application' && link) {
+      // Link in, everything else out: read the posting, fill in the details, then rate the fit.
+      setNewId(job.id);
+      try {
+        setProgress('Reading the posting…');
+        await api.post(`ai/import`, { job_id: job.id });
+        setProgress('Checking how well it fits…');
+        await api.post(`ai/match`, { job_id: job.id }).catch(() => {});   // fit rating is a bonus; do not block on it
+        nav(`/jobs/${job.id}`);
+        return;
+      } catch (err: any) { setImportErr(err.message); setProgress(''); load(); return; }
+    }
+    setForm({ company: '', role_title: '', type: form.type, source_link: '' }); setAdding(false); load();
   }
 
   async function move(job: Job, stage: Stage, outcome?: string) {
@@ -41,10 +59,10 @@ export default function LaneView() {
   return (
     <div>
       <Link to="/" className="text-sm text-teal inline-flex items-center gap-1 mb-2"><ArrowLeft size={14} /> All lanes</Link>
-      <div className="flex flex-wrap items-center gap-3 mb-5">
+      <div className="flex flex-wrap items-center justify-center gap-3 mb-5">
         <span className="w-3 h-8 rounded" style={{ background: lane.color }} />
-        <h1 className="text-3xl font-bold">{lane.name}</h1>
-        <label className="ml-auto text-sm flex items-center gap-2 text-teal">
+        <h1 className="text-3xl font-bold mr-2">{lane.name}</h1>
+        <label className="text-sm flex items-center gap-2 text-teal">
           <input type="checkbox" checked={sortFit} onChange={(e) => setSortFit(e.target.checked)} /> Best fit first
         </label>
         <label className="text-sm flex items-center gap-2 text-teal">
@@ -54,27 +72,38 @@ export default function LaneView() {
       </div>
 
       {adding && (
-        <form onSubmit={addJob} className="card p-4 mb-5 flex flex-wrap gap-3 items-end">
-          <div>
-            <label className="label">Type</label>
-            <select className="input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
-              <option value="application">Application</option>
-              <option value="logistics">Logistics</option>
-            </select>
+        <form onSubmit={addJob} className="card p-4 mb-5 max-w-3xl mx-auto space-y-3">
+          <div className="flex flex-wrap gap-3 items-end">
+            <div>
+              <label className="label">Type</label>
+              <select className="input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+                <option value="application">Application</option>
+                <option value="logistics">Logistics</option>
+              </select>
+            </div>
+            <div className="flex-1 min-w-64">
+              <label className="label">{form.type === 'logistics' ? 'Link (optional)' : 'Job posting link'}</label>
+              <input className="input" placeholder="Paste the link and everything else fills in" value={form.source_link} onChange={(e) => setForm({ ...form, source_link: e.target.value })} autoFocus />
+            </div>
           </div>
-          <div className="flex-1 min-w-44">
-            <label className="label">{form.type === 'logistics' ? 'Topic' : 'Company'}</label>
-            <input className="input" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} autoFocus />
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="flex-1 min-w-44">
+              <label className="label">{form.type === 'logistics' ? 'Topic' : 'Company (only if no link)'}</label>
+              <input className="input" value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} />
+            </div>
+            <div className="flex-1 min-w-44">
+              <label className="label">{form.type === 'logistics' ? 'Detail' : 'Role (only if no link)'}</label>
+              <input className="input" value={form.role_title} onChange={(e) => setForm({ ...form, role_title: e.target.value })} />
+            </div>
+            <button className="btn" disabled={!!progress}>{progress || (form.source_link.trim() && form.type === 'application' ? 'Add and import' : 'Save')}</button>
           </div>
-          <div className="flex-1 min-w-44">
-            <label className="label">{form.type === 'logistics' ? 'Detail' : 'Role'}</label>
-            <input className="input" value={form.role_title} onChange={(e) => setForm({ ...form, role_title: e.target.value })} />
-          </div>
-          <button className="btn">Save</button>
+          {importErr && (
+            <p className="text-sm text-red-700">{importErr}{newId && <> The job was still added. <Link className="underline" to={`/jobs/${newId}`}>Open it</Link> and paste the posting text.</>}</p>
+          )}
         </form>
       )}
 
-      <div className="flex gap-3 overflow-x-auto pb-4">
+      <div className="flex gap-3 overflow-x-auto pb-4 xl:justify-center">
         {stages.map((stage) => {
           const rank = { strong: 0, moderate: 1, weak: 2 } as Record<string, number>;
           let col = jobs.filter((j) => j.stage === stage);

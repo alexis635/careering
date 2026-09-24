@@ -28,4 +28,5 @@ export interface Attention {
 export interface SearchHit { type: string; id: number; job_id: number | null; label: string; title: string; snippet: string }
 export interface LibItem { id: number; kind: 'bullet' | 'resume' | 'bio' | 'snippet'; title: string; body: string; tags: string[] }
 export interface JobContact { id: number; name: string; title: string; email: string; source: string; notes: string }
-export interface JobEmail { id: number; direction: 'sent' | 'received'; from_addr: string; to_addr: string; subject: string; body: string; sent_at: string; gmail_thread_id: string | null }
+export interface JobEmail { attachments?: string[]; id: number; direction: 'sent' | 'received'; from_addr: string; to_addr: string; subject: string; body: string; sent_at: string; gmail_thread_id: string | null }
+export interface MailItem { id: number; job_id: number; label: string; direction: 'sent' | 'received' | 'draft'; from_addr: string; to_addr: string; subject: string; snippet: string; sent_at: string; gmail_thread_id: string | null; attachments: string[] }

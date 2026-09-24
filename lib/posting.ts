@@ -39,7 +39,14 @@ export async function fetchPosting(link: string): Promise<string> {
   } catch { throw new HttpError(422, 'Could not reach that page. Paste the posting text instead.'); }
   if (!res.ok) throw new HttpError(422, `That site refused the request (${res.status}). Paste the posting text instead.`);
   const html = (await res.text()).slice(0, 2_000_000);
-  const text = fromJsonLd(html) ?? htmlToText(html);
+  let text = fromJsonLd(html) ?? htmlToText(html);
+  // Optional fallback for pages that render with scripts. Off by default: it sends the (public) job URL to r.jina.ai.
+  if (text.length < 500 && process.env.POSTING_READER === 'jina') {
+    try {
+      const r = await fetch(`https://r.jina.ai/${url.toString()}`, { signal: AbortSignal.timeout(25000), headers: { Accept: 'text/plain' } });
+      if (r.ok) text = (await r.text()).trim();
+    } catch { /* fall through to the message below */ }
+  }
   if (text.length < 500) throw new HttpError(422, 'That page needs a login or loads its content with scripts, so it could not be read. Paste the posting text instead.');
   return text.slice(0, 20000);
 }

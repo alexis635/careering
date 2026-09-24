@@ -42,14 +42,14 @@ export default function Library() {
   const shown = items.filter((i) => (showArchived || !i.tags.includes('archived')) && (!filter || (i.title + i.body + i.tags.join(' ')).toLowerCase().includes(filter.toLowerCase())));
 
   return (
-    <div className="max-w-3xl">
-      <h1 className="text-3xl font-bold mb-4">Content Library</h1>
-      <div className="flex gap-1 border-b border-sky mb-4 overflow-x-auto">
+    <div className="max-w-3xl mx-auto">
+      <h1 className="text-3xl font-bold mb-4 text-center">Content Library</h1>
+      <div className="flex justify-center gap-1 border-b border-sky mb-4 overflow-x-auto">
         {KINDS.map((k) => (
           <button key={k.key} onClick={() => setKind(k.key)} className={`px-3.5 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${kind === k.key ? 'border-navy font-semibold' : 'border-transparent text-teal hover:text-navy'}`}>{k.label}</button>
         ))}
       </div>
-      <p className="text-sm text-teal mb-3">{cur.hint}</p>
+      <p className="text-sm text-teal mb-3 text-center">{cur.hint}</p>
       <div className="flex gap-2 mb-4">
         <input className="input" placeholder="Search…" value={filter} onChange={(e) => setFilter(e.target.value)} />
         <label className="text-sm text-teal flex items-center gap-1.5 whitespace-nowrap"><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Show archived</label>

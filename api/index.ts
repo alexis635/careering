@@ -1,10 +1,12 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { q } from '../lib/db.js';
+import { deepNoDash } from '../src/lib/noDash.js';
 import { aiRoute } from '../lib/ai-routes.js';
 import { attention } from '../lib/attention.js';
 import { search } from '../lib/search.js';
 import { HttpError } from '../lib/ai.js';
-import { authUrl, checkState, gmailStatus, handleCallback, sendEmail, syncReplies } from '../lib/gmail.js';
+import { authUrl, checkState, gmailStatus, handleCallback, sendEmail, syncAll, syncReplies } from '../lib/gmail.js';
+import { mailList } from '../lib/mail.js';
 import { clearSession, isAuthed, issueSession } from '../lib/auth.js';
 
 type Ctx = { method: string; parts: string[]; body: any; query: URLSearchParams; host: string };
@@ -150,11 +152,26 @@ async function route(c: Ctx): Promise<Result> {
   if (a === 'attention' && c.method === 'GET') return { json: await attention() };
   if (a === 'search' && c.method === 'GET') return { json: await search(c.query.get('q') || '', c.query.get('job_id') ? Number(c.query.get('job_id')) : null) };
 
+  // ---- mail center + settings ----
+  if (a === 'mail' && c.method === 'GET') return { json: await mailList(c.query.get('box') || 'all') };
+  if (a === 'settings') {
+    const KEYS = ['portfolio_url'];   // whitelist: the settings table also holds the Gmail token, which must never be exposed
+    if (!b && c.method === 'GET') {
+      const rows = await q(`SELECT key, value FROM settings WHERE key = ANY($1)`, [KEYS]);
+      return { json: Object.fromEntries(rows.map((r: any) => [r.key, r.value])) };
+    }
+    if (b && KEYS.includes(b) && c.method === 'PUT') {
+      await q(`INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2`, [b, JSON.stringify(String(c.body.value ?? ''))]);
+      return { json: { ok: true } };
+    }
+  }
+
   // ---- gmail ----
   if (a === 'gmail') {
     if (b === 'status') return { json: await gmailStatus() };
     if (b === 'connect') return { json: { url: authUrl(c.host) } };
-    if (b === 'send' && c.method === 'POST') return { json: await sendEmail(Number(c.body.job_id), c.body.to, c.body.subject, c.body.body) };
+    if (b === 'send' && c.method === 'POST') return { json: await sendEmail(Number(c.body.job_id), c.body.to, c.body.subject, c.body.body, c.body.attachments ?? []) };
+    if (b === 'sync-all' && c.method === 'POST') return { json: await syncAll() };
     if (b === 'sync' && c.method === 'POST') return { json: await syncReplies(Number(c.body.job_id)) };
   }
 
@@ -231,7 +248,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       res.statusCode = 302; res.setHeader('Location', '/?gmail=connected'); return res.end();
     }
 
-    const body = method === 'GET' || method === 'DELETE' ? {} : await readBody(req);
+    const body = method === 'GET' || method === 'DELETE' ? {} : deepNoDash(await readBody(req));
     send(await route({ method, parts, body, query: url.searchParams, host: String(req.headers['x-forwarded-host'] || req.headers.host || '') }));
   } catch (e: any) {
     console.error(e);

@@ -6,6 +6,7 @@ import LaneView from './pages/LaneView';
 import JobDetail from './pages/JobDetail';
 import Library from './pages/Library';
 import Search from './pages/Search';
+import Mail from './pages/Mail';
 
 function Login({ onDone }: { onDone: () => void }) {
   const [pw, setPw] = useState('');
@@ -33,7 +34,7 @@ function HeaderSearch() {
   const onJob = useMatch('/jobs/:id');
   const [term, setTerm] = useState('');
   return (
-    <form className="ml-auto" onSubmit={(e) => { e.preventDefault(); if (term.trim()) nav(`/search?q=${encodeURIComponent(term.trim())}${onJob ? `&job=${onJob.params.id}` : ''}`); }}>
+    <form onSubmit={(e) => { e.preventDefault(); if (term.trim()) nav(`/search?q=${encodeURIComponent(term.trim())}${onJob ? `&job=${onJob.params.id}` : ''}`); }}>
       <input value={term} onChange={(e) => setTerm(e.target.value)} placeholder={onJob ? 'Search or ask (this job first)…' : 'Search or ask anything…'}
         className="w-56 md:w-72 rounded-lg bg-white/10 text-white placeholder:text-sky/70 px-3 py-1.5 text-sm focus:outline-none focus:bg-white/20" />
     </form>
@@ -54,16 +55,19 @@ export default function App() {
   return (
     <div className="min-h-screen">
       <header className="bg-navy">
-        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-6">
+        <div className="max-w-7xl mx-auto px-4 h-14 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
           <span className="font-display text-xl font-bold text-white">Careering</span>
           <nav className="flex gap-1">
             <NavLink to="/" end className={link}>Lanes</NavLink>
+            <NavLink to="/mail" className={link}>Mail</NavLink>
             <NavLink to="/library" className={link}>Library</NavLink>
           </nav>
+          <div className="flex items-center justify-end gap-4">
           <HeaderSearch />
           <button className="text-sm text-sky hover:text-white" onClick={async () => { await api.post('logout'); setAuthed(false); }}>
             Sign out
           </button>
+          </div>
         </div>
       </header>
       <main className="max-w-7xl mx-auto px-4 py-6">
@@ -73,6 +77,7 @@ export default function App() {
           <Route path="/jobs/:id" element={<JobDetail />} />
           <Route path="/library" element={<Library />} />
           <Route path="/search" element={<Search />} />
+          <Route path="/mail" element={<Mail />} />
         </Routes>
       </main>
     </div>

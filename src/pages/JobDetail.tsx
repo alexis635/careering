@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ArrowLeft, Download, ExternalLink, Mail, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, Download, ExternalLink, Mail, Paperclip, Plus, Sparkles, Trash2, X } from 'lucide-react';
 import { api } from '../api';
 import FitBadge from '../components/FitBadge';
-import type { Job, JobAction, JobContact, JobDoc, JobEmail, JobNote } from '../types';
+import type { Job, JobAction, JobContact, JobDoc, JobEmail, JobNote, LibItem } from '../types';
 
 const TABS = ['Overview', 'Contacts', 'Emails', 'Documents', 'Interview Prep', 'Notes Log', 'Next Actions'] as const;
 type Tab = (typeof TABS)[number];
@@ -35,7 +35,8 @@ export default function JobDetail() {
   const { id } = useParams();
   const nav = useNavigate();
   const [job, setJob] = useState<Job | null>(null);
-  const [tab, setTab] = useState<Tab>('Overview');
+  const [sp] = useSearchParams();
+  const [tab, setTab] = useState<Tab>((TABS as readonly string[]).includes(sp.get('tab') ?? '') ? (sp.get('tab') as Tab) : 'Overview');
   const [docs, setDocs] = useState<JobDoc[]>([]);
   const [notes, setNotes] = useState<JobNote[]>([]);
   const [actions, setActions] = useState<JobAction[]>([]);
@@ -50,6 +51,11 @@ export default function JobDetail() {
   const [gmail, setGmail] = useState<{ connected: boolean; email: string | null } | null>(null);
   const [compose, setCompose] = useState({ to: '', subject: '', body: '' });
   const [mailMsg, setMailMsg] = useState('');
+  type Att = { name: string; mime: string; data: string };
+  const [atts, setAtts] = useState<Att[]>([]);
+  const [portfolio, setPortfolio] = useState('');
+  const [usePortfolio, setUsePortfolio] = useState(true);
+  const [masters, setMasters] = useState<LibItem[]>([]);
   const [edits, setEdits] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [aiErr, setAiErr] = useState('');
@@ -64,6 +70,10 @@ export default function JobDetail() {
   };
   useEffect(() => { api.get<{ connected: boolean; email: string | null }>('gmail/status').then(setGmail).catch(() => setGmail({ connected: false, email: null })); }, []);
   useEffect(() => { api.get<Job>(`jobs/${id}`).then(setJob); loadKids(); }, [id]);
+  useEffect(() => {
+    api.get<Record<string, string>>('settings').then((r) => setPortfolio(r.portfolio_url ?? '')).catch(() => {});
+    api.get<LibItem[]>('library?kind=resume').then((r) => setMasters(r.filter((x: any) => !x.tags.includes('archived')))).catch(() => {});
+  }, []);
 
   if (!job) return null;
   function useInEmail(d: JobDoc) {
@@ -71,12 +81,35 @@ export default function JobDetail() {
     setCompose({ to: contacts.find((c) => c.email)?.email ?? '', subject: m ? m[1].trim() : '', body: (m ? d.body.slice(m[0].length) : d.body).trim() });
     setMailMsg(''); setTab('Emails');
   }
+  async function attachFromDoc(value: string) {
+    if (!value) return;
+    const [src, rawId] = value.split(':');
+    const doc = src === 'doc' ? docs.find((d) => d.id === Number(rawId)) : null;
+    const lib = src === 'lib' ? masters.find((m) => m.id === Number(rawId)) : null;
+    const text = doc ? (edits[doc.id] ?? doc.body) : lib?.body;
+    if (!text) return;
+    setBusy('attach'); setMailMsg('');
+    try {
+      const { pdfAttachment } = await import('../lib/resumePdf');
+      const a = await pdfAttachment(doc?.kind === 'cover_letter' ? 'letter' : 'resume', text);
+      setAtts((xs) => [...xs.filter((x) => x.name !== a.name), a]);
+    } catch (e: any) { setMailMsg(e.message || 'Could not build that PDF'); } finally { setBusy(null); }
+  }
+  function attachFile(file: File | undefined) {
+    if (!file) return;
+    if (atts.reduce((n, a) => n + a.data.length * 0.75, 0) + file.size > 2_900_000) { setMailMsg('Attachments are limited to about 3 MB in total.'); return; }
+    const r = new FileReader();
+    r.onload = () => { const data = String(r.result).split(',')[1] ?? ''; setAtts((xs) => [...xs, { name: file.name, mime: file.type || 'application/pdf', data }]); };
+    r.readAsDataURL(file);
+  }
   async function sendMail() {
-    if (!confirm(`Send this email to ${compose.to} from ${gmail?.email}?`)) return;
+    const withLink = usePortfolio && portfolio.trim() ? `${compose.body}\n\nPortfolio: ${portfolio.trim()}` : compose.body;
+    const list = atts.length ? `\nAttachments: ${atts.map((a) => a.name).join(', ')}` : '';
+    if (!confirm(`Send this email to ${compose.to} from ${gmail?.email}?${list}`)) return;
     setBusy('send'); setMailMsg('');
     try {
-      await api.post('gmail/send', { job_id: Number(id), ...compose });
-      setCompose({ to: '', subject: '', body: '' }); setMailMsg('Sent.'); loadKids();
+      await api.post('gmail/send', { job_id: Number(id), to: compose.to, subject: compose.subject, body: withLink, attachments: atts });
+      setCompose({ to: '', subject: '', body: '' }); setAtts([]); setMailMsg('Sent.'); loadKids();
     } catch (e: any) { setMailMsg(e.message); } finally { setBusy(null); }
   }
   async function syncMail() {
@@ -95,10 +128,10 @@ export default function JobDetail() {
   const logistics = job.type === 'logistics';
 
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-4xl mx-auto">
       <Link to={`/lanes/${job.lane_id}`} className="text-sm text-teal inline-flex items-center gap-1 mb-2"><ArrowLeft size={14} /> Back to lane</Link>
-      <div className="flex items-start gap-3 mb-1">
-        <div className="flex-1">
+      <div className="flex flex-wrap items-center justify-center gap-3 mb-1 text-center">
+        <div className="basis-full">
           <h1 className="text-3xl font-bold">{job.company || 'Untitled'}</h1>
           <p className="text-teal">{job.role_title}</p>
         </div>
@@ -106,7 +139,7 @@ export default function JobDetail() {
         <button className="btn-ghost" onClick={async () => { if (confirm('Delete this entry and everything in it?')) { await api.del(`jobs/${id}`); nav(`/lanes/${job.lane_id}`); } }}><Trash2 size={14} /></button>
       </div>
 
-      <div className="flex gap-1 border-b border-sky my-5 overflow-x-auto">
+      <div className="flex justify-center gap-1 border-b border-sky my-5 overflow-x-auto">
         {TABS.map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`px-3.5 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${tab === t ? 'border-navy font-semibold' : 'border-transparent text-teal hover:text-navy'}`}>
             {t}
@@ -211,6 +244,30 @@ export default function JobDetail() {
               <input className="input" type="email" required placeholder="To" value={compose.to} onChange={(e) => setCompose({ ...compose, to: e.target.value })} />
               <input className="input" required placeholder="Subject" value={compose.subject} onChange={(e) => setCompose({ ...compose, subject: e.target.value })} />
               <textarea className="input" rows={9} required placeholder="Write here, or open an outreach draft under Documents and click Use in email." value={compose.body} onChange={(e) => setCompose({ ...compose, body: e.target.value })} />
+              <div className="rounded-lg bg-beige p-3 space-y-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Paperclip size={14} className="text-teal" />
+                  <select className="input w-auto max-w-xs text-xs" value="" onChange={(e) => attachFromDoc(e.target.value)} disabled={busy === 'attach'}>
+                    <option value="">{busy === 'attach' ? 'Building PDF…' : 'Attach a resume or cover letter…'}</option>
+                    {docs.some((d) => d.kind === 'resume' || d.kind === 'cover_letter') && <optgroup label="Drafts for this job">
+                      {docs.filter((d) => d.kind === 'resume' || d.kind === 'cover_letter').map((d) => <option key={d.id} value={`doc:${d.id}`}>{d.title} (v{d.version})</option>)}
+                    </optgroup>}
+                    {masters.length > 0 && <optgroup label="Master resumes">
+                      {masters.map((m) => <option key={m.id} value={`lib:${m.id}`}>{m.title}</option>)}
+                    </optgroup>}
+                  </select>
+                  <label className="btn-ghost cursor-pointer text-xs">Attach a file<input type="file" className="hidden" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" onChange={(e) => { attachFile(e.target.files?.[0]); e.target.value = ''; }} /></label>
+                </div>
+                {atts.length > 0 && <div className="flex flex-wrap gap-1.5">{atts.map((a) => (
+                  <span key={a.name} className="inline-flex items-center gap-1 rounded bg-white border border-sky px-2 py-0.5 text-xs">{a.name}
+                    <button type="button" onClick={() => setAtts((xs) => xs.filter((x) => x !== a))} className="text-teal hover:text-navy"><X size={12} /></button></span>
+                ))}</div>}
+                <div className="flex flex-wrap items-center gap-2">
+                  <input className="input flex-1 min-w-48 text-xs" placeholder="Portfolio link (added under your message)" value={portfolio} onChange={(e) => setPortfolio(e.target.value)}
+                    onBlur={() => api.put('settings/portfolio_url', { value: portfolio }).catch(() => {})} />
+                  <label className="text-xs text-teal flex items-center gap-1.5"><input type="checkbox" checked={usePortfolio} onChange={(e) => setUsePortfolio(e.target.checked)} /> Include</label>
+                </div>
+              </div>
               <div className="flex items-center gap-3">
                 <button className="btn" disabled={busy === 'send'}><Mail size={14} /> {busy === 'send' ? 'Sending…' : 'Send'}</button>
                 {mailMsg && <span className="text-sm text-teal">{mailMsg}</span>}
@@ -233,6 +290,7 @@ export default function JobDetail() {
               </div>
               <div className="font-medium text-sm">{m.subject}</div>
               <p className="whitespace-pre-wrap text-sm mt-1">{m.body}</p>
+              {!!m.attachments?.length && <div className="mt-2 flex flex-wrap gap-1.5">{m.attachments.map((n) => <span key={n} className="inline-flex items-center gap-1 rounded bg-beige px-2 py-0.5 text-xs text-teal"><Paperclip size={11} /> {n}</span>)}</div>}
             </div>
           ))}
         </div>
@@ -277,21 +335,21 @@ export default function JobDetail() {
               </button>
               {openDoc === d.id && (
                 <>
-                  {d.kind === 'resume' ? (
+                  {d.kind === 'resume' || d.kind === 'cover_letter' ? (
                     <textarea className="input font-mono text-[12px] leading-relaxed mt-3" rows={22} value={edits[d.id] ?? d.body} onChange={(e) => setEdits({ ...edits, [d.id]: e.target.value })} />
                   ) : (
                     <pre className="whitespace-pre-wrap text-sm mt-3 font-sans">{d.body}</pre>
                   )}
                   <div className="flex flex-wrap gap-2 mt-3">
-                    {d.kind === 'resume' && (
+                    {(d.kind === 'resume' || d.kind === 'cover_letter') && (
                       <>
                         <button className="btn" disabled={busy === `pdf${d.id}`} onClick={async () => {
                           setBusy(`pdf${d.id}`);
-                          try { const { downloadResumePdf } = await import('../lib/resumePdf'); await downloadResumePdf(edits[d.id] ?? d.body, `${(job.company || 'resume').replace(/[^\w]+/g, '-')}-resume-v${d.version}`); } finally { setBusy(null); }
+                          try { const { downloadPdf } = await import('../lib/resumePdf'); await downloadPdf(d.kind === 'cover_letter' ? 'letter' : 'resume', edits[d.id] ?? d.body, `${(job.company || 'job').replace(/[^\w]+/g, '-')}-${d.kind === 'cover_letter' ? 'cover-letter' : 'resume'}-v${d.version}`); } finally { setBusy(null); }
                         }}><Download size={13} /> {busy === `pdf${d.id}` ? 'Building…' : 'Download PDF'}</button>
                         {edits[d.id] !== undefined && edits[d.id] !== d.body && (
                           <button className="btn-ghost" onClick={async () => {
-                            const saved = await api.post<JobDoc>(`jobs/${id}/documents`, { kind: 'resume', title: d.title, body: edits[d.id] });
+                            const saved = await api.post<JobDoc>(`jobs/${id}/documents`, { kind: d.kind, title: d.title, body: edits[d.id] });
                             setEdits((e) => { const { [d.id]: _, ...rest } = e; return rest; }); loadKids(); setOpenDoc(saved.id);
                           }}>Save edits as new version</button>
                         )}

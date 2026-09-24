@@ -38,13 +38,13 @@ export default function Lanes() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5">
-        <h1 className="text-3xl font-bold">Lanes</h1>
+      <div className="flex flex-col items-center gap-3 mb-6">
+        <h1 className="text-4xl font-bold">Lanes</h1>
         <button className="btn" onClick={() => setAdding((v) => !v)}><Plus size={16} /> New lane</button>
       </div>
 
       {adding && (
-        <form onSubmit={create} className="card p-4 mb-5 flex flex-wrap gap-3 items-end">
+        <form onSubmit={create} className="card p-4 mb-5 max-w-2xl mx-auto flex flex-wrap gap-3 items-end">
           <div className="flex-1 min-w-56">
             <label className="label">Name</label>
             <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. LA · Teaching" autoFocus />
@@ -60,21 +60,21 @@ export default function Lanes() {
       <NeedsAttention att={att} />
 
       {lanes && lanes.length === 0 && !adding && (
-        <p className="text-teal">No lanes yet. A lane is a parallel career track, like "Bridge · Remote" or "LA · Teaching".</p>
+        <p className="text-teal text-center">No lanes yet. A lane is a parallel career track, like "Bridge · Remote" or "LA · Teaching".</p>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 max-w-5xl mx-auto">
         {lanes?.map((l) => {
           const total = l.counts?.reduce((s, c) => s + c.n, 0) ?? 0;
           return (
             <Link key={l.id} to={`/lanes/${l.id}`} className="card overflow-hidden hover:shadow-md transition-shadow">
               <div className="h-2" style={{ background: l.color }} />
               <div className="p-5">
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start justify-center gap-2 text-center">
                   <h2 className="text-xl font-semibold leading-tight">{l.name}</h2>
                   {l.status !== 'active' && <span className="text-xs bg-sky/60 rounded px-2 py-0.5">{l.status}</span>}
                 </div>
-                {countdown(l.target_date) && <p className="text-sm text-teal mt-1">{countdown(l.target_date)}</p>}
+                {countdown(l.target_date) && <p className="text-sm text-teal mt-1 text-center">{countdown(l.target_date)}</p>}
                 <div className="mt-4 grid grid-cols-6 gap-1 text-center">
                   {STAGES.map((s) => (
                     <div key={s}>
@@ -83,7 +83,7 @@ export default function Lanes() {
                     </div>
                   ))}
                 </div>
-                <p className="text-xs text-teal mt-3">{total} {total === 1 ? 'entry' : 'entries'}</p>
+                <p className="text-xs text-teal mt-3 text-center">{total} {total === 1 ? 'entry' : 'entries'}</p>
               </div>
             </Link>
           );
@@ -109,8 +109,8 @@ function NeedsAttention({ att }: { att: Attention | null }) {
   if (!soon.length && !acts.length && !stale.length) return null;
   const row = 'flex items-center gap-3 py-1.5 text-sm';
   return (
-    <div className="card p-5 mb-6">
-      <h2 className="text-xl font-semibold mb-2">Needs attention</h2>
+    <div className="card p-5 mb-6 max-w-3xl mx-auto">
+      <h2 className="text-xl font-semibold mb-2 text-center">Needs attention</h2>
       <div className="divide-y divide-sky/60">
         {soon.map((d) => { const r = rel(d.deadline); return (
           <Link key={`d${d.id}`} to={`/jobs/${d.id}`} className={row}>

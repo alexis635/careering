@@ -1,3 +1,4 @@
+import { noDash } from './noDash';
 import { Document, Font, Page, Text, View, StyleSheet, pdf } from '@react-pdf/renderer';
 
 // Never split words across lines (no "engage-ment").
@@ -65,7 +66,7 @@ export function parseResume(src: string): Block[] {
 
 export function ResumeDoc({ text, layout = { fs: 8.8, g: 1 } }: { text: string; layout?: Layout }) {
   const s = mk(layout);
-  const blocks = parseResume(text);
+  const blocks = parseResume(noDash(text));
   return (
     <Document>
       <Page size="LETTER" style={s.page}>
@@ -110,8 +111,8 @@ export function pageCount(bytes: Uint8Array): number {
  * leftover space into breathing room, so there is never a big empty gap at the bottom.
  * If the content cannot fit one page even at the smallest size, it falls back to a clean two-page layout.
  */
-export async function fitResume(render: RenderFn): Promise<{ bytes: Uint8Array; layout: Layout; pages: number }> {
-  const FS_MIN = 8, FS_MAX = 10.5, G_MAX = 2.6;
+export async function fitResume(render: RenderFn, opts: { fsMin?: number; fsMax?: number; gMax?: number } = {}): Promise<{ bytes: Uint8Array; layout: Layout; pages: number }> {
+  const FS_MIN = opts.fsMin ?? 8, FS_MAX = opts.fsMax ?? 10.5, G_MAX = opts.gMax ?? 2.6;
   const attempt = async (layout: Layout) => { const bytes = await render(layout); return { bytes, layout, pages: pageCount(bytes) }; };
 
   // phase 1: biggest font that fits on one page at normal spacing
@@ -139,16 +140,69 @@ export async function fitResume(render: RenderFn): Promise<{ bytes: Uint8Array; 
   return best;
 }
 
-export async function resumeBlob(text: string): Promise<Blob> {
-  const { bytes } = await fitResume(async (layout) => new Uint8Array(await (await pdf(<ResumeDoc text={text} layout={layout} />).toBlob()).arrayBuffer()));
+// ---------------- cover letter ----------------
+const mkLetter = ({ fs, g }: Layout) => StyleSheet.create({
+  page: { paddingTop: 54 + 10 * (g - 1), paddingBottom: 48, paddingHorizontal: 66, fontFamily: 'Helvetica', fontSize: fs, color: '#1f2937', lineHeight: Math.min(1.35 + 0.05 * (g - 1), 1.6) },
+  name: { fontFamily: 'Times-Bold', fontSize: fs * 2.1, lineHeight: 1.1, color: NAVY, marginBottom: 3 },
+  contact: { fontSize: fs * 0.9, color: TEAL, paddingBottom: 8, borderBottomWidth: 0.75, borderBottomColor: '#C8D9E6', marginBottom: 14 * g },
+  date: { marginBottom: 12 * g },
+  para: { marginBottom: 9 * g },
+});
+
+export function parseLetter(src: string) {
+  const lines = src.replace(/\r/g, '').trim().split('\n');
+  let name = '', contact = '';
+  if (lines[0] && !/^(dear|to whom)/i.test(lines[0].trim()) && lines[0].trim().length < 60) name = lines.shift()!.trim();
+  if (name && lines[0] && lines[0].includes('@')) contact = lines.shift()!.trim();
+  const paras = lines.join('\n').split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  return { name, contact, paras };
+}
+
+export function LetterDoc({ text, layout = { fs: 11, g: 1 } }: { text: string; layout?: Layout }) {
+  const s = mkLetter(layout);
+  const { name, contact, paras } = parseLetter(noDash(text));
+  const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  return (
+    <Document>
+      <Page size="LETTER" style={s.page}>
+        {name ? <Text style={s.name}>{name}</Text> : null}
+        {contact ? <Text style={s.contact}>{contact}</Text> : null}
+        <Text style={s.date}>{today}</Text>
+        {paras.map((p, i) => <Text key={i} style={s.para} orphans={2} widows={2}>{p}</Text>)}
+      </Page>
+    </Document>
+  );
+}
+
+export type PdfKind = 'resume' | 'letter';
+
+export async function pdfBlob(kind: PdfKind, text: string): Promise<Blob> {
+  const render: RenderFn = async (layout) => {
+    const doc = kind === 'letter' ? <LetterDoc text={text} layout={layout} /> : <ResumeDoc text={text} layout={layout} />;
+    return new Uint8Array(await (await pdf(doc).toBlob()).arrayBuffer());
+  };
+  const { bytes } = await fitResume(render, kind === 'letter' ? { fsMin: 10, fsMax: 12.5, gMax: 2.2 } : {});
   return new Blob([bytes as BlobPart], { type: 'application/pdf' });
 }
 
-export async function downloadResumePdf(text: string, filename: string) {
-  const blob = await resumeBlob(text);
+export const resumeBlob = (text: string) => pdfBlob('resume', text);
+
+export async function downloadPdf(kind: PdfKind, text: string, filename: string) {
+  const blob = await pdfBlob(kind, text);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+export const downloadResumePdf = (text: string, filename: string) => downloadPdf('resume', text, filename);
+
+/** Build the PDF and return it as an email attachment. The file is named from the document's own first line (the candidate's name). */
+export async function pdfAttachment(kind: PdfKind, text: string): Promise<{ name: string; mime: string; data: string }> {
+  const blob = await pdfBlob(kind, text);
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  const who = noDash(text).split('\n')[0].replace(/[^\w .'-]/g, '').trim() || 'Resume';
+  return { name: `${who} - ${kind === 'letter' ? 'Cover Letter' : 'Resume'}.pdf`, mime: 'application/pdf', data: btoa(bin) };
 }

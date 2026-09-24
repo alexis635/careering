@@ -7,6 +7,28 @@ type Body = { job_id?: number; instructions?: string; kind?: string; contact_nam
 
 const jobHeader = (j: any) => `Company: ${j.company}\nRole: ${j.role_title}\nLocation: ${j.location} ${j.remote_type}`.trim();
 
+async function parseJob(job: any, posting: string) {
+  const jobId = job.id;
+  const out = parseJson<any>(
+    await ask(
+      'Extract structured data from a job posting. Respond with ONLY a JSON object with keys: ' +
+        'role (string), company (string), location (string), remote_type (string: remote/hybrid/onsite/unknown), salary_range (string, empty if not stated), ' +
+        'summary (2 sentence plain summary), requirements (string[] of must-have skills, experience, and qualifications only; leave out physical demands, work schedule or travel boilerplate, and benefits), nice_to_haves (string[]), keywords (string[] of skills/terms an ATS would scan for), deadline (YYYY-MM-DD or empty), ' +
+        'contact_person (name of a named recruiter or hiring manager if the posting gives one, otherwise empty).',
+      posting,
+    ),
+  );
+  const sets: string[] = ['posting_parsed = $1', 'updated_at = now()'];
+  const vals: any[] = [JSON.stringify(out)];
+  // Fill blanks only, never overwrite what she typed.
+  for (const [col, val] of [['company', out.company], ['role_title', out.role], ['location', out.location], ['salary_range', out.salary_range], ['remote_type', out.remote_type], ['contact_person', out.contact_person]] as const) {
+    if (val && !String(job[col] ?? '').trim()) { vals.push(val); sets.push(`${col} = $${vals.length}`); }
+  }
+  if (out.deadline && /^\d{4}-\d{2}-\d{2}$/.test(out.deadline) && !job.deadline) { vals.push(out.deadline); sets.push(`deadline = $${vals.length}`); }
+  vals.push(jobId);
+  return (await q(`UPDATE jobs SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals))[0];
+}
+
 export async function aiRoute(action: string, body: Body): Promise<any> {
   if (action === 'ask') return askRoute(body);
   const jobId = Number(body.job_id);
@@ -18,28 +40,17 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
     const text = await fetchPosting(job.source_link);
     return (await q(`UPDATE jobs SET posting_text=$1, updated_at=now() WHERE id=$2 RETURNING *`, [text, jobId]))[0];
   }
+
+  // One step: read the link, then parse it, so only the link has to be typed by hand
+  if (action === 'import') {
+    const text = await fetchPosting(job.source_link);
+    const updated = (await q(`UPDATE jobs SET posting_text=$1, updated_at=now() WHERE id=$2 RETURNING *`, [text, jobId]))[0];
+    return parseJob(updated, text);
+  }
   const posting = postingOrThrow(job);
 
   // 1. Posting parser
-  if (action === 'parse') {
-    const out = parseJson<any>(
-      await ask(
-        'Extract structured data from a job posting. Respond with ONLY a JSON object with keys: ' +
-          'role (string), company (string), location (string), remote_type (string: remote/hybrid/onsite/unknown), salary_range (string, empty if not stated), ' +
-          'summary (2 sentence plain summary), requirements (string[] of must-have skills, experience, and qualifications only; leave out physical demands, work schedule or travel boilerplate, and benefits), nice_to_haves (string[]), keywords (string[] of skills/terms an ATS would scan for), deadline (YYYY-MM-DD or empty).',
-        posting,
-      ),
-    );
-    const sets: string[] = ['posting_parsed = $1', 'updated_at = now()'];
-    const vals: any[] = [JSON.stringify(out)];
-    // Fill blanks only, never overwrite what she typed.
-    for (const [col, val] of [['company', out.company], ['role_title', out.role], ['location', out.location], ['salary_range', out.salary_range], ['remote_type', out.remote_type]] as const) {
-      if (val && !job[col]) { vals.push(val); sets.push(`${col} = $${vals.length}`); }
-    }
-    if (out.deadline && /^\d{4}-\d{2}-\d{2}$/.test(out.deadline) && !job.deadline) { vals.push(out.deadline); sets.push(`deadline = $${vals.length}`); }
-    vals.push(jobId);
-    return (await q(`UPDATE jobs SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals))[0];
-  }
+  if (action === 'parse') return parseJob(job, posting);
 
   const lib = await libraryContext();
   if (lib.empty && action !== 'outreach') throw new HttpError(400, 'Add some bullets and a resume version to the Library first');
@@ -85,7 +96,8 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
     const text = await ask(
       isOutreach
         ? 'Write a short outreach email (under 130 words) to a hiring manager or recruiter. First line: "Subject: ...". Open with a specific reason for reaching out, give one or two relevant proof points from the candidate material, and end with a low-pressure ask. Sound like a person, not a template.'
-        : 'Write a cover letter (250-330 words). Open with a specific hook about the company or role, connect two or three real accomplishments from the candidate material to the posting\'s top needs, close briefly. No "I am writing to apply" opener.',
+        : 'Write a cover letter as a finished document. Line 1: the candidate\'s full name. Line 2: contact line (email · phone), both from the CAREER FACTS or base resume, never a location. Then a blank line, then the letter: a greeting ("Dear Hiring Team," if no name is known), 3 short paragraphs totalling 250 to 330 words, and a closing "Sincerely," on its own line followed by the candidate\'s name. ' +
+          'Open with a specific hook about the company or role, connect two or three real accomplishments from the candidate material to the posting\'s top needs, close briefly. No "I am writing to apply" opener. Plain paragraphs only, separated by blank lines.',
       `${jobHeader(job)}\n${isOutreach && body.contact_name ? `Recipient: ${body.contact_name}${body.contact_title ? `, ${body.contact_title}` : ''}\n` : ''}\nJOB POSTING:\n${posting}\n\nCANDIDATE MATERIAL:\n${lib.text}${body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''}`,
       6000,
     );

@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { q } from './db.js';
 import { HttpError } from './ai.js';
+import { noDash } from '../src/lib/noDash.js';
 
 const SCOPES = ['https://www.googleapis.com/auth/gmail.send', 'https://www.googleapis.com/auth/gmail.readonly'];
 
@@ -76,16 +77,40 @@ async function gmail(path: string, init?: RequestInit) {
 const b64url = (s: string) => Buffer.from(s).toString('base64url');
 const encHeader = (s: string) => (/^[\x20-\x7e]*$/.test(s) ? s : `=?UTF-8?B?${Buffer.from(s).toString('base64')}?=`);
 
-export async function sendEmail(jobId: number, to: string, subject: string, body: string) {
+export interface Attachment { name: string; mime: string; data: string }   // data is base64
+const OK_MIME = /^(application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|text\/plain|image\/(png|jpeg))$/;
+const wrap76 = (b64: string) => b64.replace(/(.{76})/g, '$1\r\n');
+
+export function buildMime(to: string, subject: string, body: string, attachments: Attachment[]): string {
+  const boundary = `careering_${Date.now().toString(36)}`;
+  const lines = [`To: ${to}`, `Subject: ${encHeader(subject)}`, 'MIME-Version: 1.0'];
+  if (attachments.length) {
+    lines.push(`Content-Type: multipart/mixed; boundary="${boundary}"`, '', `--${boundary}`, 'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64', '', wrap76(Buffer.from(body).toString('base64')));
+    for (const a of attachments) {
+      const fname = a.name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '');
+      lines.push(`--${boundary}`, `Content-Type: ${a.mime}; name="${fname}"`, 'Content-Transfer-Encoding: base64', `Content-Disposition: attachment; filename="${fname}"`, '', wrap76(a.data));
+    }
+    lines.push(`--${boundary}--`);
+  } else {
+    lines.push('Content-Type: text/plain; charset=UTF-8', '', body);
+  }
+  return lines.join('\r\n');
+}
+
+export async function sendEmail(jobId: number, to: string, subject: string, body: string, attachments: Attachment[] = []) {
+  subject = noDash(subject); body = noDash(body);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new HttpError(400, 'Recipient email looks invalid');
+  if (attachments.length > 5) throw new HttpError(400, 'Attach at most 5 files');
+  if (attachments.reduce((n, a) => n + a.data.length, 0) > 4_000_000) throw new HttpError(400, 'Attachments are too large (about 3 MB total)');
+  for (const a of attachments) if (!OK_MIME.test(a.mime)) throw new HttpError(400, `${a.name}: only PDF, Word, text, PNG, or JPG files can be attached`);
   const { email } = await gmailStatus();
-  const raw = [`To: ${to}`, `Subject: ${encHeader(subject)}`, 'MIME-Version: 1.0', 'Content-Type: text/plain; charset=UTF-8', '', body].join('\r\n');
+  const raw = buildMime(to, subject, body, attachments);
   const sent = await gmail('messages/send', { method: 'POST', body: JSON.stringify({ raw: b64url(raw) }) });
   return (
     await q(
-      `INSERT INTO job_emails (job_id, gmail_thread_id, gmail_message_id, direction, from_addr, to_addr, subject, body)
-       VALUES ($1,$2,$3,'sent',$4,$5,$6,$7) RETURNING *`,
-      [jobId, sent.threadId, sent.id, email || '', to, subject, body],
+      `INSERT INTO job_emails (job_id, gmail_thread_id, gmail_message_id, direction, from_addr, to_addr, subject, body, attachments)
+       VALUES ($1,$2,$3,'sent',$4,$5,$6,$7,$8) RETURNING *`,
+      [jobId, sent.threadId, sent.id, email || '', to, subject, body, JSON.stringify(attachments.map((a) => a.name))],
     )
   )[0];
 }
@@ -120,4 +145,12 @@ export async function syncReplies(jobId: number) {
     }
   }
   return { added };
+}
+
+/** Check every job that has an app-started thread. Still never reads anything outside those threads. */
+export async function syncAll() {
+  const jobs = await q<any>(`SELECT DISTINCT job_id FROM job_emails WHERE direction='sent' AND gmail_thread_id IS NOT NULL`);
+  let added = 0;
+  for (const { job_id } of jobs) added += (await syncReplies(job_id)).added;
+  return { added, jobs: jobs.length };
 }
