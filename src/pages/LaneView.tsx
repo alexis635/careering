@@ -77,7 +77,7 @@ export default function LaneView() {
     setJobs((js) => js.map((j) => (j.id === job.id ? { ...j, ...patch } : j)));
     await api.patch(`jobs/${job.id}`, patch);
     if (stage === 'Closed' && patch.closed_outcome === 'Won' && job.closed_outcome !== 'Won' && job.type === 'application') {
-      if (confirm(`Congratulations! Add "${job.role_title || job.company}" to your career record?\n\nIt goes into Library, Roles and pay, where you can set the start date and log your pay as it changes.`)) {
+      if (confirm(`Congratulations! Add "${job.role_title || job.company}" to your career record?\n\nIt goes into Rise, Roles and pay, where you can set the start date and log your pay as it changes.`)) {
         await api.post('roles', { employer: job.company, title: job.role_title, job_id: job.id }).catch(() => {});
       }
     }

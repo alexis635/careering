@@ -23,7 +23,7 @@ export default function NeedsAttention({ att }: { att: Attention | null }) {
       <h2 className="text-xl font-semibold mb-2 text-center">Needs attention</h2>
       <div className="divide-y divide-sky/60">
         {creds.map((c) => { const r = rel(c.expires_on); const past = differenceInCalendarDays(parseISO(c.expires_on), new Date()) < 0; return (
-          <Link key={`c${c.id}`} to="/library?tab=docs" className={row}>
+          <Link key={`c${c.id}`} to="/vault" className={row}>
             <span className="w-2 h-2 rounded-full shrink-0 bg-navy" />
             <span className="font-medium">{c.title}</span><span className="text-teal">Credential</span>
             <span className={`ml-auto ${r.late ? 'font-semibold' : 'text-teal'}`}>{past ? `Expired ${r.text.replace(' overdue', ' ago')}` : `Expires ${r.text}`}</span>

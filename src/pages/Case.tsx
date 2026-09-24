@@ -87,7 +87,7 @@ export default function CaseBuilder() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div>
-        <Link to="/library" className="text-sm text-teal inline-flex items-center gap-1 mb-2"><ArrowLeft size={14} /> Library</Link>
+        <Link to="/rise" className="text-sm text-teal inline-flex items-center gap-1 mb-2"><ArrowLeft size={14} /> Rise</Link>
         <h1 className="text-4xl font-bold text-center">Build my case</h1>
         <p className="text-sm text-teal text-center mt-1">Turn your logged wins into a case for a promotion, raise, or review. It uses only the wins you choose, in your own voice, and it never invents a number.</p>
       </div>
@@ -111,8 +111,8 @@ export default function CaseBuilder() {
 
       <div>
         <h2 className="text-lg font-semibold text-center mb-1">Choose the wins to build from ({picked.size} picked)</h2>
-        <p className="text-xs text-teal text-center mb-2">Wins at your employer are picked for you. Wins with no date are included, so add dates in Library, Wins for a tighter case.{' '}<Link to="/library" className="underline">Open Wins</Link></p>
-        {wins && wins.length === 0 && <p className="text-sm text-teal text-center">No wins yet. Add some in Library, then Wins.</p>}
+        <p className="text-xs text-teal text-center mb-2">Wins at your employer are picked for you. Wins with no date are included, so add dates in Rise, Wins for a tighter case.{' '}<Link to="/rise" className="underline">Open Wins</Link></p>
+        {wins && wins.length === 0 && <p className="text-sm text-teal text-center">No wins yet. Add some in Rise, then Wins.</p>}
         {mine.length > 0 && <div className="card divide-y divide-sky/60">{mine.map(row)}</div>}
         {otherEmployers.length > 0 && <>
           <p className="label text-center mt-4 mb-1.5">Other employers, only as short supporting evidence</p>
