@@ -1,6 +1,7 @@
 import { q } from './db.js';
 import { fetchPosting } from './posting.js';
 import { caseRoute } from './cases.js';
+import { deckAngles, deckRoute } from './decks.js';
 import { search } from './search.js';
 import { noDash } from '../src/lib/noDash.js';
 import { HttpError, ask, libraryContext, loadJob, parseJson, postingOrThrow, saveDoc } from './ai.js';
@@ -35,6 +36,8 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
   if (action === 'ask') return askRoute(body);
   if (action === 'resume') return resumeRoute(body as any);
   if (action === 'case') return caseRoute(body as any);
+  if (action === 'deck') return deckRoute(body as any);
+  if (action === 'deck-angles') return deckAngles(body as any);
   const jobId = Number(body.job_id);
   if (!jobId) throw new HttpError(400, 'job_id required');
   const job = await loadJob(jobId);

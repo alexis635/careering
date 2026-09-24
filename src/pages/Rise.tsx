@@ -3,8 +3,9 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Sparkles } from 'lucide-react';
 import Wins from '../components/Wins';
 import RolesPay from '../components/RolesPay';
+import DecksList from '../components/DecksList';
 
-const TABS = [['wins', 'Wins'], ['roles', 'Roles and pay'], ['case', 'Build my case']] as const;
+const TABS = [['wins', 'Wins'], ['roles', 'Roles and pay'], ['decks', 'Decks'], ['case', 'Build my case']] as const;
 type Tab = (typeof TABS)[number][0];
 
 export default function Rise() {
@@ -24,6 +25,7 @@ export default function Rise() {
       </div>
       {tab === 'wins' && <Wins />}
       {tab === 'roles' && <RolesPay />}
+      {tab === 'decks' && <DecksList />}
       {tab === 'case' && (
         <div className="card p-6 text-center space-y-3 max-w-xl mx-auto">
           <p className="text-sm">Turn your logged wins into a case for a promotion, a raise, or a performance review. It uses only the wins you choose, in your own voice, and never invents a number.</p>

@@ -11,6 +11,7 @@ import { home } from '../lib/home.js';
 import * as vault from '../lib/vault.js';
 import * as cases from '../lib/cases.js';
 import * as roles from '../lib/roles.js';
+import * as decks from '../lib/decks.js';
 import { exportAll } from '../lib/export.js';
 import { cleanStagesConfig } from '../lib/stages.js';
 import { weekly, weeklyFocus, weeklyText } from '../lib/weekly.js';
@@ -227,6 +228,12 @@ export async function route(c: Ctx): Promise<Result> {
     if (b && !c2 && c.method === 'DELETE') { await vault.trashWin(id); return { json: { ok: true, trashed: true } }; }
   }
 
+  if (a === 'decks') {
+    if (!b && c.method === 'GET') return { json: await decks.listDecks(c.query.get('job_id') ? Number(c.query.get('job_id')) : null, c.query.get('deleted') === '1') };
+    if (b && c2 === 'restore' && c.method === 'POST') return { json: await decks.restoreDeck(id) };
+    if (b && !c2 && c.method === 'PATCH') return { json: await decks.updateDeck(id, c.body) };
+    if (b && !c2 && c.method === 'DELETE') { await decks.trashDeck(id); return { json: { ok: true, trashed: true } }; }
+  }
   if (a === 'cases') {
     if (!b && c.method === 'GET') return { json: await cases.listCases(c.query.get('deleted') === '1') };
     if (b && c2 === 'restore' && c.method === 'POST') return { json: await cases.restoreCase(id) };

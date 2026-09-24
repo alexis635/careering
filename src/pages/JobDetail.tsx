@@ -5,10 +5,11 @@ import { ArrowLeft, Download, ExternalLink, Mail, Paperclip, Plus, Sparkles, Tra
 import { api } from '../api';
 import FitBadge from '../components/FitBadge';
 import PrepView from '../components/PrepView';
+import JobDeck from '../components/JobDeck';
 import { stageInfo, type Lane } from '../types';
-import type { Job, JobAction, JobContact, JobDoc, JobEmail, JobNote, LibItem } from '../types';
+import type { Deck, Job, JobAction, JobContact, JobDoc, JobEmail, JobNote, LibItem } from '../types';
 
-const TABS = ['Overview', 'Contacts', 'Emails', 'Documents', 'Interview Prep', 'Notes Log', 'Next Actions'] as const;
+const TABS = ['Overview', 'Contacts', 'Emails', 'Documents', 'Interview Prep', 'Interview deck', 'Notes Log', 'Next Actions'] as const;
 type Tab = (typeof TABS)[number];
 
 function Field({ label, value, onSave, type = 'text', wide = false }: { label: string; value: string | null; onSave: (v: string) => void; type?: string; wide?: boolean }) {
@@ -71,12 +72,14 @@ export default function JobDetail() {
   const [prepNote, setPrepNote] = useState('');
   const [prepVer, setPrepVer] = useState<number | null>(null);
 
+  const [decks, setDecks] = useState<Deck[]>([]);
   const loadKids = () => {
     api.get<JobDoc[]>(`jobs/${id}/documents`).then(setDocs);
     api.get<JobNote[]>(`jobs/${id}/notes`).then(setNotes);
     api.get<JobContact[]>(`jobs/${id}/contacts`).then(setContacts);
     api.get<JobEmail[]>(`jobs/${id}/emails`).then(setEmails);
     api.get<JobAction[]>(`jobs/${id}/actions`).then(setActions);
+    api.get<Deck[]>(`decks?job_id=${id}`).then(setDecks).catch(() => {});
     api.get<{ documents: JobDoc[]; notes: JobNote[]; actions: JobAction[]; contacts: JobContact[] }>(`jobs/${id}/deleted`).then(setGone).catch(() => {});
   };
   useEffect(() => { api.get<{ connected: boolean; email: string | null }>('gmail/status').then(setGmail).catch(() => setGmail({ connected: false, email: null })); }, []);
@@ -109,6 +112,17 @@ export default function JobDetail() {
     const [src, rawId] = value.split(':');
     const doc = src === 'doc' ? docs.find((d) => d.id === Number(rawId)) : null;
     const lib = src === 'lib' ? masters.find((m) => m.id === Number(rawId)) : null;
+    if (src === 'deck') {
+      const d = decks.find((x) => x.id === Number(rawId));
+      if (!d) return;
+      setBusy('attach'); setMailMsg('');
+      try {
+        const { deckPdfAttachment } = await import('../lib/deckExport');
+        const a = await deckPdfAttachment(d.spec, d.title);
+        setAtts((xs) => [...xs.filter((x) => x.name !== a.name), a]);
+      } catch (e: any) { setMailMsg(e.message || 'Could not build that PDF'); } finally { setBusy(null); }
+      return;
+    }
     const text = doc ? (edits[doc.id] ?? doc.body) : lib?.body;
     if (!text) return;
     setBusy('attach'); setMailMsg('');
@@ -291,9 +305,12 @@ export default function JobDetail() {
                 <div className="flex flex-wrap items-center gap-2">
                   <Paperclip size={14} className="text-teal" />
                   <select className="input w-auto max-w-xs text-xs" value="" onChange={(e) => attachFromDoc(e.target.value)} disabled={busy === 'attach'}>
-                    <option value="">{busy === 'attach' ? 'Building PDF…' : 'Attach a resume or cover letter…'}</option>
+                    <option value="">{busy === 'attach' ? 'Building PDF…' : 'Attach a resume, cover letter, or deck…'}</option>
                     {docs.some((d) => d.kind === 'resume' || d.kind === 'cover_letter') && <optgroup label="Drafts for this job">
                       {docs.filter((d) => d.kind === 'resume' || d.kind === 'cover_letter').map((d) => <option key={d.id} value={`doc:${d.id}`}>{d.title} (v{d.version})</option>)}
+                    </optgroup>}
+                    {decks.length > 0 && <optgroup label="Interview decks (PDF)">
+                      {decks.map((d) => <option key={d.id} value={`deck:${d.id}`}>{d.title}</option>)}
                     </optgroup>}
                     {masters.length > 0 && <optgroup label="Master resumes">
                       {masters.map((m) => <option key={m.id} value={`lib:${m.id}`}>{m.title}</option>)}
@@ -447,6 +464,8 @@ export default function JobDetail() {
           </div>
         );
       })()}
+
+      {tab === 'Interview deck' && <JobDeck jobId={Number(id)} decks={decks} reload={loadKids} />}
 
       {tab === 'Notes Log' && (
         <div className="space-y-4">
