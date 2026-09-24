@@ -175,6 +175,27 @@ const statements = [
   `ALTER TABLE library_items ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
   `ALTER TABLE career_docs ADD COLUMN IF NOT EXISTS win_id INT`,
   `ALTER TABLE lanes ADD COLUMN IF NOT EXISTS stages_config JSONB`,
+  `CREATE TABLE IF NOT EXISTS workspaces (
+    id SERIAL PRIMARY KEY,
+    role_id INT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    responsibilities TEXT NOT NULL DEFAULT '',
+    wrapup JSONB NOT NULL DEFAULT '{}',
+    wrapped_up_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+  )`,
+  `CREATE TABLE IF NOT EXISTS ws_items (
+    id SERIAL PRIMARY KEY,
+    workspace_id INT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL DEFAULT 'task',
+    title TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    due_on DATE,
+    done_at TIMESTAMPTZ,
+    extra JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+  )`,
   `CREATE TABLE IF NOT EXISTS decks (
     id SERIAL PRIMARY KEY,
     job_id INT REFERENCES jobs(id) ON DELETE CASCADE,

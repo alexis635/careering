@@ -4,6 +4,7 @@ import { Search as SearchIcon, X } from 'lucide-react';
 import { api } from './api';
 import Hub from './pages/Hub';
 import Home from './pages/Home';
+import WorkspacePage from './pages/Workspace';
 import Thrive from './pages/Thrive';
 import Vault from './pages/Vault';
 import Rise from './pages/Rise';
@@ -131,6 +132,7 @@ export default function App() {
           <Route path="/" element={<Hub />} />
           <Route path="/pursue" element={<Home />} />
           <Route path="/thrive" element={<Thrive />} />
+          <Route path="/thrive/:id" element={<WorkspacePage />} />
           <Route path="/vault" element={<Vault />} />
           <Route path="/rise" element={<Rise />} />
           <Route path="/lanes" element={<Lanes />} />

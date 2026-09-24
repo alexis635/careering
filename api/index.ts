@@ -12,6 +12,7 @@ import * as vault from '../lib/vault.js';
 import * as cases from '../lib/cases.js';
 import * as roles from '../lib/roles.js';
 import * as decks from '../lib/decks.js';
+import * as thrive from '../lib/thrive.js';
 import { exportAll } from '../lib/export.js';
 import { cleanStagesConfig } from '../lib/stages.js';
 import { weekly, weeklyFocus, weeklyText } from '../lib/weekly.js';
@@ -233,6 +234,22 @@ export async function route(c: Ctx): Promise<Result> {
     if (b && c2 === 'restore' && c.method === 'POST') return { json: await decks.restoreDeck(id) };
     if (b && !c2 && c.method === 'PATCH') return { json: await decks.updateDeck(id, c.body) };
     if (b && !c2 && c.method === 'DELETE') { await decks.trashDeck(id); return { json: { ok: true, trashed: true } }; }
+  }
+  if (a === 'workspaces') {
+    if (!b && c.method === 'GET') return { json: await thrive.listWorkspaces(c.query.get('deleted') === '1') };
+    if (!b && c.method === 'POST') return { json: await thrive.createWorkspace(c.body) };
+    if (b && !c2 && c.method === 'GET') return { json: await thrive.getWorkspace(id) };
+    if (b && !c2 && c.method === 'PATCH') return { json: await thrive.updateWorkspace(id, c.body) };
+    if (b && !c2 && c.method === 'DELETE') { await thrive.trashWorkspace(id); return { json: { ok: true, trashed: true } }; }
+    if (b && c2 === 'restore' && c.method === 'POST') return { json: await thrive.restoreWorkspace(id) };
+    if (b && c2 === 'wrapup' && c.method === 'POST') return { json: await thrive.wrapUp(id, c.body) };
+    if (b && c2 === 'reopen' && c.method === 'POST') return { json: await thrive.reopen(id) };
+    if (b && c2 === 'items' && c.method === 'POST') return { json: await thrive.createItem(id, c.body) };
+  }
+  if (a === 'ws-items' && b) {
+    if (c2 === 'restore' && c.method === 'POST') return { json: await thrive.restoreItem(id) };
+    if (!c2 && c.method === 'PATCH') return { json: await thrive.updateItem(id, c.body) };
+    if (!c2 && c.method === 'DELETE') { await thrive.trashItem(id); return { json: { ok: true, trashed: true } }; }
   }
   if (a === 'cases') {
     if (!b && c.method === 'GET') return { json: await cases.listCases(c.query.get('deleted') === '1') };

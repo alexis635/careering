@@ -49,6 +49,8 @@ export interface VaultDoc { win_id?: number | null; id: number; title: string; c
 export interface Win { id: number; title: string; happened_on: string | null; employer: string; role: string; description: string; impact: string; category: string; proof_url: string; bullet_id: number | null; file_count?: number; deleted_at?: string | null }
 import type { DeckSpec } from './lib/deckSpec';
 export interface Deck { id: number; job_id: number | null; title: string; angle: string; minutes: number; spec: DeckSpec; created_at: string; updated_at: string; company?: string | null; role_title?: string | null; deleted_at?: string | null }
+export interface WsItem { id: number; workspace_id: number; kind: 'task' | 'goal' | 'note' | 'contact'; title: string; body: string; due_on: string | null; done_at: string | null; extra: Record<string, string>; created_at: string; deleted_at?: string | null }
+export interface Workspace { id: number; role_id: number; employer: string; title: string; start_date: string | null; end_date: string | null; responsibilities: string; wrapup: Record<string, boolean>; wrapped_up_at: string | null; created_at: string; deleted_at?: string | null; open_tasks?: number; items?: WsItem[]; gone?: WsItem[] }
 export interface CompEntry { id: number; role_id: number; effective_on: string | null; kind: string; amount: number | null; note: string }
 export interface Role { id: number; employer: string; title: string; start_date: string | null; end_date: string | null; approx: boolean; notes: string; job_id: number | null; comp: CompEntry[]; deleted_at?: string | null }
 
