@@ -127,7 +127,7 @@ export default function App() {
           </nav>
         </div>
       )}
-      <main className="max-w-7xl mx-auto px-4 py-6">
+      <main className={/^\/thrive\/\d+/.test(pathname) ? 'w-full' : 'max-w-7xl mx-auto px-4 py-6'}>
         <Routes>
           <Route path="/" element={<Hub />} />
           <Route path="/pursue" element={<Home />} />

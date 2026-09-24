@@ -229,36 +229,37 @@ export default function WorkspacePage() {
   const navBtn = (x: Sec) => {
     const on = sec === x.id, Icon = x.icon;
     return (
-      <button key={x.id} onClick={() => { setSec(x.id); setMsg(''); }} className={`w-full flex items-center gap-2.5 text-left px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${on ? 'bg-navy text-white font-semibold shadow-sm' : 'text-navy hover:bg-sky/50'}`}>
-        <Icon size={16} className={on ? 'text-white' : 'text-teal'} /> {x.label}
+      <button key={x.id} onClick={() => { setSec(x.id); setMsg(''); }} className={`w-full flex items-center gap-3 text-left px-3 py-2.5 rounded-xl text-sm whitespace-nowrap transition-colors ${on ? 'bg-white/15 text-white font-semibold' : 'text-sky hover:bg-white/10 hover:text-white'}`}>
+        <Icon size={17} className={on ? 'text-white' : 'text-sky/80'} /> {x.label}
       </button>
     );
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-5">
-      <Link to="/thrive" className="text-sm text-teal inline-flex items-center gap-1"><ArrowLeft size={14} /> Thrive</Link>
-      <div className="text-center">
-        <h1 className="text-3xl font-bold">{ws.employer}</h1>
-        <p className="text-teal">{ws.title}{ws.start_date ? ` · since ${day(ws.start_date)}` : ''}{locked && ws.end_date ? ` · ended ${day(ws.end_date)}` : ''}</p>
-        {locked && <p className="text-xs text-teal mt-1">Wrapped up. Everything stays here and stays searchable.</p>}
-      </div>
-
-      <div className="md:grid md:grid-cols-[230px_1fr] md:gap-6 items-start">
-        <nav className="hidden md:block md:sticky md:top-4 card p-2 space-y-3">
+    <div className="md:flex md:min-h-[calc(100vh-56px)]">
+      <aside className="bg-navy text-white border-t border-white/10 md:w-64 md:shrink-0 md:sticky md:top-0 md:self-start md:h-screen md:overflow-y-auto">
+        <div className="px-4 pt-4 pb-3 md:px-5 md:pt-5 md:pb-4 border-b border-white/10">
+          <Link to="/thrive" className="text-xs text-sky hover:text-white inline-flex items-center gap-1 mb-3"><ArrowLeft size={13} /> All workspaces</Link>
+          <div className="font-display text-lg font-bold leading-tight">{ws.employer}</div>
+          <div className="text-sm text-sky mt-0.5">{ws.title}</div>
+          {locked && <div className="text-[11px] text-sky/80 mt-1">Wrapped up{ws.end_date ? ` ${day(ws.end_date)}` : ''}</div>}
+        </div>
+        <nav className="hidden md:block px-3 py-4 space-y-5">
           {groups.map((g, k) => (
-            <div key={k} className={k > 0 && !g.title ? 'pt-2 border-t border-sky/60' : ''}>
-              {g.title && <div className="text-[11px] uppercase tracking-wide text-teal px-3 pb-1">{g.title}</div>}
+            <div key={k} className={k > 0 && !g.title ? 'pt-4 border-t border-white/10' : ''}>
+              {g.title && <div className="text-[11px] uppercase tracking-wider text-sky/60 px-3 pb-1.5">{g.title}</div>}
               <div className="space-y-0.5">{g.secs.map(navBtn)}</div>
             </div>
           ))}
         </nav>
-        <nav className="md:hidden flex gap-1 overflow-x-auto pb-2 mb-4 border-b border-sky">
+        <nav className="md:hidden flex gap-1 overflow-x-auto px-3 py-2">
           {flat.map((x) => <div key={x.id} className="shrink-0">{navBtn(x)}</div>)}
         </nav>
+      </aside>
 
-        <div className="space-y-5 min-w-0">
-          <h2 className="text-xl font-semibold">{label}</h2>
+      <div className="flex-1 min-w-0 px-4 py-6 md:px-10 md:py-8">
+        <div className="max-w-6xl space-y-5">
+          <h2 className="text-2xl font-semibold">{label}</h2>
           {msg && <div className="text-sm text-teal">{msg}</div>}
 
           {sec === 'overview' && (
