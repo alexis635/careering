@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { Plus } from 'lucide-react';
 import { api } from '../api';
-import { LANE_COLORS, STAGES, type Lane } from '../types';
+import { LANE_COLORS, stageInfo, type Lane } from '../types';
 
 function countdown(d: string | null) {
   if (!d) return null;
@@ -79,11 +79,11 @@ export default function Lanes() {
                 </div>
                 {l.start_date && l.target_date && <p className="text-xs text-teal mt-1 text-center">{format(parseISO(l.start_date.slice(0, 10)), 'MMM yyyy')} to {format(parseISO(l.target_date.slice(0, 10)), 'MMM yyyy')}</p>}
                 {countdown(l.target_date) && <p className="text-sm text-teal mt-1 text-center">{countdown(l.target_date)}</p>}
-                <div className="mt-4 grid grid-cols-6 gap-1 text-center">
-                  {STAGES.map((s) => (
-                    <div key={s}>
-                      <div className="text-lg font-semibold">{l.counts?.find((c) => c.stage === s)?.n ?? 0}</div>
-                      <div className="text-[10px] uppercase tracking-wide text-teal truncate">{s}</div>
+                <div className="mt-4 grid gap-1 text-center" style={{ gridTemplateColumns: `repeat(${stageInfo(l).stages.length}, minmax(0, 1fr))` }}>
+                  {stageInfo(l).stages.map((s) => (
+                    <div key={s.key}>
+                      <div className="text-lg font-semibold">{l.counts?.find((c) => c.stage === s.key)?.n ?? 0}</div>
+                      <div className="text-[10px] uppercase tracking-wide text-teal truncate">{s.label}</div>
                     </div>
                   ))}
                 </div>

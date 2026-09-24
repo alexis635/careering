@@ -1,4 +1,5 @@
 import { q } from './db.js';
+import { stageLabel } from './stages.js';
 
 /** Things that need a nudge. Dates come back as plain YYYY-MM-DD strings so the browser can compare in local time. */
 export async function attention() {
@@ -9,11 +10,11 @@ export async function attention() {
       ORDER BY j.deadline`,
   );
   const stale = await q(
-    `SELECT j.id, j.company, j.role_title, j.stage, l.name AS lane_name, l.color,
+    `SELECT j.id, j.company, j.role_title, j.stage, l.name AS lane_name, l.color, l.stages_config,
             to_char(GREATEST(j.updated_at, COALESCE(e.last_email, j.updated_at)),'YYYY-MM-DD') AS last_activity
        FROM jobs j JOIN lanes l ON l.id = j.lane_id
        LEFT JOIN (SELECT job_id, max(sent_at) AS last_email FROM job_emails GROUP BY job_id) e ON e.job_id = j.id
-      WHERE j.deleted_at IS NULL AND l.deleted_at IS NULL AND l.archived_at IS NULL AND j.stage IN ('Applied','Screening','Interviewing')
+      WHERE j.deleted_at IS NULL AND l.deleted_at IS NULL AND l.archived_at IS NULL AND j.stage IN ('Applied','Screening','Interviewing','Offer')
         AND GREATEST(j.updated_at, COALESCE(e.last_email, j.updated_at)) < now() - interval '7 days'
       ORDER BY last_activity`,
   );
@@ -27,5 +28,6 @@ export async function attention() {
   const credentials = await q(
     `SELECT id, title, category, to_char(expires_on,'YYYY-MM-DD') AS expires_on FROM career_docs
       WHERE deleted_at IS NULL AND expires_on IS NOT NULL AND expires_on <= current_date + 90 AND expires_on >= current_date - 30 ORDER BY expires_on`);
-  return { deadlines, stale, actions, credentials };
+  const named = (rows: any[]) => rows.map(({ stages_config, ...r }) => ({ ...r, stage: stageLabel(stages_config, r.stage) }));
+  return { deadlines, stale: named(stale), actions, credentials };
 }

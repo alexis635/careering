@@ -12,6 +12,7 @@ import * as vault from '../lib/vault.js';
 import * as cases from '../lib/cases.js';
 import * as roles from '../lib/roles.js';
 import { exportAll } from '../lib/export.js';
+import { cleanStagesConfig } from '../lib/stages.js';
 import { weekly, weeklyFocus, weeklyText } from '../lib/weekly.js';
 import { clearSession, isAuthed, issueSession } from '../lib/auth.js';
 
@@ -26,7 +27,9 @@ const JOB_FIELDS = [
   'contact_person', 'contact_notes', 'posting_text', 'match_notes', 'resume_version_id',
   'interview_prep', 'fit',
 ];
-const LANE_FIELDS = ['name', 'start_date', 'target_date', 'status', 'notes', 'color', 'position'];
+const LANE_FIELDS = ['name', 'start_date', 'target_date', 'status', 'notes', 'color', 'position', 'stages_config'];
+const JSON_FIELDS = ['interview_dates', 'stages_config'];
+const jsonVal = (f: string, v: any) => (JSON_FIELDS.includes(f) && v !== null && v !== undefined ? JSON.stringify(v) : v);
 const LIB_FIELDS = ['kind', 'title', 'body', 'tags'];
 
 function buildUpdate(table: string, fields: string[], id: number, body: any, touch = false) {
@@ -34,7 +37,7 @@ function buildUpdate(table: string, fields: string[], id: number, body: any, tou
   const vals: any[] = [];
   for (const f of fields) {
     if (f in body) {
-      vals.push(f === 'interview_dates' ? JSON.stringify(body[f]) : body[f]);
+      vals.push(jsonVal(f, body[f]));
       sets.push(`${f} = $${vals.length}`);
     }
   }
@@ -46,7 +49,7 @@ function buildUpdate(table: string, fields: string[], id: number, body: any, tou
 
 function buildInsert(table: string, fields: string[], body: any) {
   const cols = fields.filter((f) => f in body);
-  const vals = cols.map((c) => (c === 'interview_dates' ? JSON.stringify(body[c]) : body[c]));
+  const vals = cols.map((c) => jsonVal(c, body[c]));
   if (!cols.length) return { text: `INSERT INTO ${table} DEFAULT VALUES RETURNING *`, vals: [] };
   return {
     text: `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`,
@@ -66,6 +69,7 @@ export async function route(c: Ctx): Promise<Result> {
       const counts = await q(`SELECT lane_id, stage, count(*)::int AS n FROM jobs WHERE deleted_at IS NULL GROUP BY lane_id, stage`);
       return { json: lanes.map((l: any) => ({ ...l, counts: counts.filter((x: any) => x.lane_id === l.id) })) };
     }
+    if ('stages_config' in c.body && (c.method === 'POST' || c.method === 'PATCH')) c.body.stages_config = cleanStagesConfig(c.body.stages_config);
     if (!b && c.method === 'POST') {
       const s = buildInsert('lanes', LANE_FIELDS, c.body);
       return { json: (await q(s.text, s.vals))[0] };

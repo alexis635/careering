@@ -1,15 +1,16 @@
 import { q } from './db.js';
 import { attention } from './attention.js';
 import { ask } from './ai.js';
+import { stageLabel } from './stages.js';
 
 const LIVE = `j.deleted_at IS NULL AND l.deleted_at IS NULL AND l.archived_at IS NULL`;
 const NAME = `COALESCE(NULLIF(j.company,''),'Untitled')`;
 
 export async function weekly() {
   const [added, applied, closed, replies, sent, pipeline, worth, att] = await Promise.all([
-    q(`SELECT j.id, ${NAME} AS company, j.role_title, j.stage, j.fit, l.name AS lane_name FROM jobs j JOIN lanes l ON l.id=j.lane_id
+    q(`SELECT j.id, ${NAME} AS company, j.role_title, j.stage, j.fit, l.name AS lane_name, l.stages_config FROM jobs j JOIN lanes l ON l.id=j.lane_id
         WHERE ${LIVE} AND j.type='application' AND j.created_at > now() - interval '7 days' ORDER BY j.created_at DESC`),
-    q(`SELECT j.id, ${NAME} AS company, j.role_title, j.stage, l.name AS lane_name FROM jobs j JOIN lanes l ON l.id=j.lane_id
+    q(`SELECT j.id, ${NAME} AS company, j.role_title, j.stage, l.name AS lane_name, l.stages_config FROM jobs j JOIN lanes l ON l.id=j.lane_id
         WHERE ${LIVE} AND j.applied_date >= current_date - 7 ORDER BY j.applied_date DESC`),
     q(`SELECT j.id, ${NAME} AS company, j.role_title, j.closed_outcome FROM jobs j JOIN lanes l ON l.id=j.lane_id
         WHERE ${LIVE} AND j.stage='Closed' AND j.updated_at > now() - interval '7 days'`),
@@ -21,7 +22,8 @@ export async function weekly() {
         WHERE ${LIVE} AND j.type='application' AND j.stage='Saved' AND j.fit IN ('strong','moderate') ORDER BY (j.fit='strong') DESC, j.updated_at DESC LIMIT 8`),
     attention(),
   ]);
-  return { added, applied, closed, replies, emailsSent: sent[0].n, pipeline, worthApplying: worth, deadlines: att.deadlines, stale: att.stale, actions: att.actions };
+  const named = (rows: any[]) => rows.map(({ stages_config, ...r }) => ({ ...r, stage: stageLabel(stages_config, r.stage) }));
+  return { added: named(added), applied: named(applied), closed, replies, emailsSent: sent[0].n, pipeline, worthApplying: worth, deadlines: att.deadlines, stale: att.stale, actions: att.actions };
 }
 
 type Weekly = Awaited<ReturnType<typeof weekly>>;

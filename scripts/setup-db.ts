@@ -174,6 +174,7 @@ const statements = [
   `ALTER TABLE job_contacts ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
   `ALTER TABLE library_items ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
   `ALTER TABLE career_docs ADD COLUMN IF NOT EXISTS win_id INT`,
+  `ALTER TABLE lanes ADD COLUMN IF NOT EXISTS stages_config JSONB`,
   `CREATE INDEX IF NOT EXISTS jobs_lane_idx ON jobs(lane_id)`,
   `CREATE INDEX IF NOT EXISTS job_emails_thread_idx ON job_emails(gmail_thread_id)`,
 ];

@@ -3,7 +3,9 @@ export type Stage = (typeof STAGES)[number];
 export const OUTCOMES = ['Won', 'Lost', 'Withdrawn'] as const;
 export const LANE_COLORS = ['#567C8D', '#2F4058', '#8FB0C7', '#B08968', '#7A9E7E', '#A66A6A'];
 
+export interface StagesConfig { stages: { key: Stage; label: string }[]; outcomes: Record<string, string> }
 export interface Lane {
+  stages_config?: StagesConfig | null;
   id: number; name: string; start_date?: string | null; created_at?: string; target_date: string | null; status: 'active' | 'paused' | 'achieved';
   notes: string; color: string; position: number; archived_at?: string | null; deleted_at?: string | null;
   counts?: { stage: Stage; n: number }[];
@@ -47,3 +49,19 @@ export interface VaultDoc { win_id?: number | null; id: number; title: string; c
 export interface Win { id: number; title: string; happened_on: string | null; employer: string; role: string; description: string; impact: string; category: string; proof_url: string; bullet_id: number | null; file_count?: number; deleted_at?: string | null }
 export interface CompEntry { id: number; role_id: number; effective_on: string | null; kind: string; amount: number | null; note: string }
 export interface Role { id: number; employer: string; title: string; start_date: string | null; end_date: string | null; approx: boolean; notes: string; job_id: number | null; comp: CompEntry[]; deleted_at?: string | null }
+
+/** A lane can rename and hide stages. The stored stage is always one of the standard six. */
+export function stageInfo(lane?: { stages_config?: StagesConfig | null } | null) {
+  const cfg = lane?.stages_config;
+  const stages = cfg?.stages ?? STAGES.map((k) => ({ key: k as Stage, label: k as string }));
+  return {
+    stages,
+    label: (k: string) => stages.find((s) => s.key === k)?.label ?? k,
+    outcome: (o: string) => cfg?.outcomes?.[o] ?? o,
+  };
+}
+
+export const FREELANCE_PRESET: StagesConfig = {
+  stages: [{ key: 'Saved', label: 'Lead' }, { key: 'Applied', label: 'Pitched' }, { key: 'Screening', label: 'In conversation' }, { key: 'Offer', label: 'Negotiating' }, { key: 'Closed', label: 'Closed' }],
+  outcomes: { Won: 'Contracted', Lost: 'Passed', Withdrawn: 'Withdrawn' },
+};

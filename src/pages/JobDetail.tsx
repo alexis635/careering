@@ -5,6 +5,7 @@ import { ArrowLeft, Download, ExternalLink, Mail, Paperclip, Plus, Sparkles, Tra
 import { api } from '../api';
 import FitBadge from '../components/FitBadge';
 import PrepView from '../components/PrepView';
+import { stageInfo, type Lane } from '../types';
 import type { Job, JobAction, JobContact, JobDoc, JobEmail, JobNote, LibItem } from '../types';
 
 const TABS = ['Overview', 'Contacts', 'Emails', 'Documents', 'Interview Prep', 'Notes Log', 'Next Actions'] as const;
@@ -49,6 +50,7 @@ export default function JobDetail() {
   const [contacts, setContacts] = useState<JobContact[]>([]);
   const [newContact, setNewContact] = useState({ name: '', title: '', email: '', notes: '' });
   const [emails, setEmails] = useState<JobEmail[]>([]);
+  const [lane, setLane] = useState<Lane | null>(null);
   const [gone, setGone] = useState<{ documents: JobDoc[]; notes: JobNote[]; actions: JobAction[]; contacts: JobContact[] } | null>(null);
   const [showGone, setShowGone] = useState(false);
   const [gmail, setGmail] = useState<{ connected: boolean; email: string | null } | null>(null);
@@ -79,6 +81,7 @@ export default function JobDetail() {
   };
   useEffect(() => { api.get<{ connected: boolean; email: string | null }>('gmail/status').then(setGmail).catch(() => setGmail({ connected: false, email: null })); }, []);
   useEffect(() => { api.get<Job>(`jobs/${id}`).then(setJob); loadKids(); }, [id]);
+  useEffect(() => { if (job?.lane_id) api.get<Lane>(`lanes/${job.lane_id}`).then(setLane).catch(() => {}); }, [job?.lane_id]);
   useEffect(() => {
     api.get<Record<string, string>>('settings').then((r) => setPortfolio(r.portfolio_url ?? '')).catch(() => {});
     api.get<LibItem[]>('library?kind=resume').then((r) => setMasters(r.filter((x: any) => !x.tags.includes('archived')))).catch(() => {});
@@ -182,7 +185,7 @@ export default function JobDetail() {
               <Field label="Salary range" value={job.salary_range} onSave={(v) => save({ salary_range: v })} />
               <Field label="Location" value={job.location} onSave={(v) => save({ location: v })} />
               <Field label="Remote type" value={job.remote_type} onSave={(v) => save({ remote_type: v })} />
-              <Field label="Applied" type="date" value={job.applied_date?.slice(0, 10) ?? ''} onSave={(v) => save({ applied_date: v || null })} />
+              <Field label={stageInfo(lane).label('Applied')} type="date" value={job.applied_date?.slice(0, 10) ?? ''} onSave={(v) => save({ applied_date: v || null })} />
             </>}
             <Field label="Deadline" type="date" value={job.deadline?.slice(0, 10) ?? ''} onSave={(v) => save({ deadline: v || null })} />
             <Field label="Contact person" value={job.contact_person} onSave={(v) => save({ contact_person: v })} />

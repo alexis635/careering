@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Plus, ArrowLeft, Archive, Trash2, RotateCcw, Pencil } from 'lucide-react';
 import { api } from '../api';
 import FitBadge from '../components/FitBadge';
-import { LANE_COLORS, OUTCOMES, STAGES, type Job, type Lane, type Stage } from '../types';
+import { FREELANCE_PRESET, LANE_COLORS, OUTCOMES, STAGES, stageInfo, type Job, type Lane, type Stage } from '../types';
 
 export default function LaneView() {
   const { id } = useParams();
@@ -20,6 +20,12 @@ export default function LaneView() {
   const [sortFit, setSortFit] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ name: '', start_date: '', target_date: '', notes: '', color: '', status: 'active' });
+  type StageDraft = { show: Record<string, boolean>; labels: Record<string, string>; outcomes: Record<string, string> };
+  const draftFrom = (cfg: Lane['stages_config']): StageDraft => {
+    const info = stageInfo({ stages_config: cfg });
+    return { show: Object.fromEntries(STAGES.map((k) => [k, info.stages.some((s) => s.key === k)])), labels: Object.fromEntries(STAGES.map((k) => [k, info.label(k)])), outcomes: Object.fromEntries(OUTCOMES.map((o) => [o, info.outcome(o)])) };
+  };
+  const [stageDraft, setStageDraft] = useState<StageDraft>(draftFrom(null));
 
   const load = () => {
     api.get<Lane>(`lanes/${id}`).then(setLane);
@@ -51,12 +57,14 @@ export default function LaneView() {
   function openEdit() {
     if (!lane) return;
     setDraft({ name: lane.name, start_date: (lane.start_date ?? '').slice(0, 10), target_date: (lane.target_date ?? '').slice(0, 10), notes: lane.notes ?? '', color: lane.color, status: lane.status });
+    setStageDraft(draftFrom(lane.stages_config));
     setEditing((v) => !v);
   }
   async function saveLane(e: React.FormEvent) {
     e.preventDefault();
     if (!draft.name.trim()) return;
-    setLane(await api.patch<Lane>(`lanes/${id}`, { ...draft, start_date: draft.start_date || null, target_date: draft.target_date || null }));
+    const stages_config = { stages: STAGES.filter((k) => stageDraft.show[k]).map((k) => ({ key: k, label: stageDraft.labels[k] })), outcomes: stageDraft.outcomes };
+    setLane(await api.patch<Lane>(`lanes/${id}`, { ...draft, start_date: draft.start_date || null, target_date: draft.target_date || null, stages_config }));
     setEditing(false);
   }
   async function archiveLane() {
@@ -84,7 +92,11 @@ export default function LaneView() {
   }
 
   if (!lane) return null;
-  const stages = hideClosed ? STAGES.filter((s) => s !== 'Closed') : STAGES;
+  const info = stageInfo(lane);
+  // show the lane's stages, plus any hidden stage that still holds jobs so nothing ever disappears
+  const withJobs = new Set(jobs.map((j) => j.stage));
+  const keys = STAGES.filter((k) => info.stages.some((s) => s.key === k) || withJobs.has(k));
+  const stages = hideClosed ? keys.filter((s) => s !== 'Closed') : keys;
 
   return (
     <div>
@@ -121,6 +133,33 @@ export default function LaneView() {
             <label className="label">Lane notes (strategy, timing)</label>
             <textarea className="input" rows={3} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
           </div>
+          <details className="rounded-lg bg-beige p-3" open={!!lane.stages_config}>
+            <summary className="cursor-pointer text-sm font-medium">Stage names for this lane</summary>
+            <div className="mt-3 space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className="btn-ghost text-xs" onClick={() => setStageDraft(draftFrom(null))}>Use standard names</button>
+                <button type="button" className="btn-ghost text-xs" onClick={() => setStageDraft(draftFrom(FREELANCE_PRESET))}>Use freelance and contract names</button>
+              </div>
+              <div className="space-y-1.5">
+                {STAGES.map((k) => (
+                  <div key={k} className="flex items-center gap-2">
+                    <input type="checkbox" checked={stageDraft.show[k]} disabled={k === 'Saved' || k === 'Closed'} title={k === 'Saved' || k === 'Closed' ? 'Every lane keeps its first and last stage' : 'Show this stage'} onChange={(e) => setStageDraft({ ...stageDraft, show: { ...stageDraft.show, [k]: e.target.checked } })} />
+                    <input className="input text-sm" value={stageDraft.labels[k]} disabled={!stageDraft.show[k]} maxLength={30} onChange={(e) => setStageDraft({ ...stageDraft, labels: { ...stageDraft.labels, [k]: e.target.value } })} />
+                    <span className="text-xs text-teal w-24 shrink-0">standard: {k}</span>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <p className="label">When a lead closes, the outcomes are called</p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {OUTCOMES.map((o) => (
+                    <div key={o}><input className="input text-sm" value={stageDraft.outcomes[o]} maxLength={30} onChange={(e) => setStageDraft({ ...stageDraft, outcomes: { ...stageDraft.outcomes, [o]: e.target.value } })} /><span className="text-[11px] text-teal">standard: {o}</span></div>
+                  ))}
+                </div>
+              </div>
+              <p className="text-xs text-teal">Jobs keep their place. Renaming only changes the words you see, and a stage that still has jobs in it stays visible.</p>
+            </div>
+          </details>
           <div>
             <label className="label">Color</label>
             <div className="flex gap-2">{LANE_COLORS.map((c) => (
@@ -187,7 +226,7 @@ export default function LaneView() {
               }}
             >
               <div className="flex items-center justify-between px-1 pb-2">
-                <span className="text-xs font-semibold uppercase tracking-wide">{stage}</span>
+                <span className="text-xs font-semibold uppercase tracking-wide">{info.label(stage)}</span>
                 <span className="text-xs text-teal">{col.length}</span>
               </div>
               <div className="space-y-2 min-h-8">
@@ -202,11 +241,11 @@ export default function LaneView() {
                       {j.type === 'logistics' && <span className="text-[10px] uppercase bg-beige rounded px-1.5 py-0.5">logistics</span>}
                       {stage === 'Closed' ? (
                         <select className="text-xs bg-beige rounded px-1 py-0.5" value={j.closed_outcome ?? 'Lost'} onChange={(e) => move(j, 'Closed', e.target.value)}>
-                          {OUTCOMES.map((o) => <option key={o}>{o}</option>)}
+                          {OUTCOMES.map((o) => <option key={o} value={o}>{info.outcome(o)}</option>)}
                         </select>
                       ) : null}
                       <select className="text-xs bg-beige rounded px-1 py-0.5 ml-auto" value={j.stage} onChange={(e) => move(j, e.target.value as Stage)}>
-                        {STAGES.map((s) => <option key={s}>{s}</option>)}
+                        {keys.map((s) => <option key={s} value={s}>{info.label(s)}</option>)}
                       </select>
                     </div>
                   </div>
