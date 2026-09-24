@@ -5,8 +5,8 @@
 const MONTH = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\\.?';
 const DASH = '[\\u2012\\u2013\\u2014\\u2015\\u2212]';
 
-const RANGE_A = new RegExp(`(\\d)\\s*${DASH}\\s*(?=\\d|Present|Current|Now\\b|${MONTH}\\b)`, 'g');   // 2021 – Present, 2023 – May 2026
-const RANGE_B = new RegExp(`\\b(${MONTH})\\s*${DASH}\\s*(?=\\d|${MONTH}\\b)`, 'g');                  // Jun – Aug 2019
+const RANGE_A = new RegExp(`(\\d)\\s*${DASH}\\s*(?=\\d|Present|Current|Now\\b|${MONTH}\\b)`, 'g');   // 2021 to Present, 2023 to May 2026
+const RANGE_B = new RegExp(`\\b(${MONTH})\\s*${DASH}\\s*(?=\\d|${MONTH}\\b)`, 'g');                  // Jun to Aug 2019
 const ANY = new RegExp(`\\s*${DASH}\\s*`, 'g');
 
 export function noDash(s: string): string {

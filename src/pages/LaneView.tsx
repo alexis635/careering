@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Plus, ArrowLeft } from 'lucide-react';
+import { Plus, ArrowLeft, Archive, Trash2, RotateCcw } from 'lucide-react';
 import { api } from '../api';
 import FitBadge from '../components/FitBadge';
 import { OUTCOMES, STAGES, type Job, type Lane, type Stage } from '../types';
@@ -46,6 +46,18 @@ export default function LaneView() {
     setForm({ company: '', role_title: '', type: form.type, source_link: '' }); setAdding(false); load();
   }
 
+  async function archiveLane() {
+    await api.post(`lanes/${id}/archive`); nav('/lanes');
+  }
+  async function deleteLane() {
+    const n = jobs.length;
+    if (!confirm(`Move "${lane?.name}" to the Trash?\n\n${n ? `Its ${n} job${n === 1 ? '' : 's'} and everything inside ${n === 1 ? 'it' : 'them'} stay saved. ` : ''}You can restore it anytime from Archive & Trash.`)) return;
+    await api.del(`lanes/${id}`); nav('/lanes');
+  }
+  async function restoreLane() {
+    await api.post(`lanes/${id}/restore`); load();
+  }
+
   async function move(job: Job, stage: Stage, outcome?: string) {
     const patch: any = { stage, closed_outcome: stage === 'Closed' ? outcome ?? job.closed_outcome ?? 'Lost' : null };
     if (stage === 'Applied' && !job.applied_date) patch.applied_date = new Date().toISOString().slice(0, 10);
@@ -58,7 +70,7 @@ export default function LaneView() {
 
   return (
     <div>
-      <Link to="/" className="text-sm text-teal inline-flex items-center gap-1 mb-2"><ArrowLeft size={14} /> All lanes</Link>
+      <Link to="/lanes" className="text-sm text-teal inline-flex items-center gap-1 mb-2"><ArrowLeft size={14} /> All lanes</Link>
       <div className="flex flex-wrap items-center justify-center gap-3 mb-5">
         <span className="w-3 h-8 rounded" style={{ background: lane.color }} />
         <h1 className="text-3xl font-bold mr-2">{lane.name}</h1>
@@ -69,7 +81,15 @@ export default function LaneView() {
           <input type="checkbox" checked={hideClosed} onChange={(e) => setHideClosed(e.target.checked)} /> Hide closed
         </label>
         <button className="btn" onClick={() => setAdding((v) => !v)}><Plus size={16} /> Add</button>
+        <button className="btn-ghost" onClick={archiveLane} title="Hide this lane but keep everything"><Archive size={14} /> Archive</button>
+        <button className="btn-ghost" onClick={deleteLane} title="Move to Trash (restorable)"><Trash2 size={14} /> Delete</button>
       </div>
+      {(lane.archived_at || lane.deleted_at) && (
+        <div className="card p-3 mb-5 max-w-3xl mx-auto flex flex-wrap items-center justify-center gap-3 text-sm">
+          <span>{lane.deleted_at ? 'This lane is in the Trash.' : 'This lane is archived.'} Everything in it is still saved.</span>
+          <button className="btn" onClick={restoreLane}><RotateCcw size={14} /> Restore</button>
+        </div>
+      )}
 
       {adding && (
         <form onSubmit={addJob} className="card p-4 mb-5 max-w-3xl mx-auto space-y-3">

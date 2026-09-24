@@ -18,13 +18,13 @@ export async function search(term: string, jobId: number | null): Promise<Hit[]>
   const like = `%${esc(term)}%`;
   const label = `COALESCE(NULLIF(j.company,''),'Untitled') || CASE WHEN j.role_title <> '' THEN ' · ' || j.role_title ELSE '' END`;
   const [jobs, docs, notes, acts, mails, contacts, lib] = await Promise.all([
-    q(`SELECT j.id, ${label} AS label, concat_ws(' ', j.company, j.role_title, j.location, j.contact_person, j.contact_notes, j.match_notes, j.interview_prep, j.posting_text) AS body FROM jobs j
-        WHERE concat_ws(' ', j.company, j.role_title, j.location, j.contact_person, j.contact_notes, j.match_notes, j.interview_prep, j.posting_text) ILIKE $1 LIMIT 15`, [like]),
-    q(`SELECT d.id, d.job_id, ${label} AS label, d.title, d.body FROM job_documents d JOIN jobs j ON j.id=d.job_id WHERE d.title ILIKE $1 OR d.body ILIKE $1 LIMIT 15`, [like]),
-    q(`SELECT n.id, n.job_id, ${label} AS label, n.body FROM job_notes n JOIN jobs j ON j.id=n.job_id WHERE n.body ILIKE $1 LIMIT 15`, [like]),
-    q(`SELECT a.id, a.job_id, ${label} AS label, a.text AS body FROM job_actions a JOIN jobs j ON j.id=a.job_id WHERE a.text ILIKE $1 LIMIT 10`, [like]),
-    q(`SELECT m.id, m.job_id, ${label} AS label, m.subject, m.body FROM job_emails m JOIN jobs j ON j.id=m.job_id WHERE m.subject ILIKE $1 OR m.body ILIKE $1 LIMIT 15`, [like]),
-    q(`SELECT c.id, c.job_id, ${label} AS label, concat_ws(' · ', c.name, c.title, c.email, c.notes) AS body FROM job_contacts c JOIN jobs j ON j.id=c.job_id WHERE concat_ws(' ', c.name, c.title, c.email, c.notes) ILIKE $1 LIMIT 10`, [like]),
+    q(`SELECT j.id, ${label} AS label, concat_ws(' ', j.company, j.role_title, j.location, j.contact_person, j.contact_notes, j.match_notes, j.interview_prep, j.posting_text) AS body FROM jobs j JOIN lanes l ON l.id = j.lane_id
+        WHERE j.deleted_at IS NULL AND l.deleted_at IS NULL AND concat_ws(' ', j.company, j.role_title, j.location, j.contact_person, j.contact_notes, j.match_notes, j.interview_prep, j.posting_text) ILIKE $1 LIMIT 15`, [like]),
+    q(`SELECT d.id, d.job_id, ${label} AS label, d.title, d.body FROM job_documents d JOIN jobs j ON j.id=d.job_id JOIN lanes l ON l.id=j.lane_id WHERE j.deleted_at IS NULL AND l.deleted_at IS NULL AND (d.title ILIKE $1 OR d.body ILIKE $1) LIMIT 15`, [like]),
+    q(`SELECT n.id, n.job_id, ${label} AS label, n.body FROM job_notes n JOIN jobs j ON j.id=n.job_id JOIN lanes l ON l.id=j.lane_id WHERE j.deleted_at IS NULL AND l.deleted_at IS NULL AND n.body ILIKE $1 LIMIT 15`, [like]),
+    q(`SELECT a.id, a.job_id, ${label} AS label, a.text AS body FROM job_actions a JOIN jobs j ON j.id=a.job_id JOIN lanes l ON l.id=j.lane_id WHERE j.deleted_at IS NULL AND l.deleted_at IS NULL AND a.text ILIKE $1 LIMIT 10`, [like]),
+    q(`SELECT m.id, m.job_id, ${label} AS label, m.subject, m.body FROM job_emails m JOIN jobs j ON j.id=m.job_id JOIN lanes l ON l.id=j.lane_id WHERE j.deleted_at IS NULL AND l.deleted_at IS NULL AND (m.subject ILIKE $1 OR m.body ILIKE $1) LIMIT 15`, [like]),
+    q(`SELECT c.id, c.job_id, ${label} AS label, concat_ws(' · ', c.name, c.title, c.email, c.notes) AS body FROM job_contacts c JOIN jobs j ON j.id=c.job_id JOIN lanes l ON l.id=j.lane_id WHERE j.deleted_at IS NULL AND l.deleted_at IS NULL AND concat_ws(' ', c.name, c.title, c.email, c.notes) ILIKE $1 LIMIT 10`, [like]),
     q(`SELECT id, kind, title, body FROM library_items WHERE NOT ('archived' = ANY(tags)) AND (title ILIKE $1 OR body ILIKE $1 OR array_to_string(tags,' ') ILIKE $1) LIMIT 15`, [like]),
   ]);
   const hits: Hit[] = [

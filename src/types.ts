@@ -5,7 +5,7 @@ export const LANE_COLORS = ['#567C8D', '#2F4058', '#8FB0C7', '#B08968', '#7A9E7E
 
 export interface Lane {
   id: number; name: string; target_date: string | null; status: 'active' | 'paused' | 'achieved';
-  notes: string; color: string; position: number;
+  notes: string; color: string; position: number; archived_at?: string | null; deleted_at?: string | null;
   counts?: { stage: Stage; n: number }[];
 }
 export interface Job {
@@ -30,3 +30,15 @@ export interface LibItem { id: number; kind: 'bullet' | 'resume' | 'bio' | 'snip
 export interface JobContact { id: number; name: string; title: string; email: string; source: string; notes: string }
 export interface JobEmail { attachments?: string[]; id: number; direction: 'sent' | 'received'; from_addr: string; to_addr: string; subject: string; body: string; sent_at: string; gmail_thread_id: string | null }
 export interface MailItem { id: number; job_id: number; label: string; direction: 'sent' | 'received' | 'draft'; from_addr: string; to_addr: string; subject: string; snippet: string; sent_at: string; gmail_thread_id: string | null; attachments: string[] }
+export interface WeeklyData {
+  added: { id: number; company: string; role_title: string; stage: string; lane_name: string }[];
+  applied: { id: number; company: string; role_title: string; stage: string; lane_name: string }[];
+  closed: { id: number; company: string; role_title: string; closed_outcome: string | null }[];
+  replies: { id: number; job_id: number; company: string; from_addr: string; subject: string; snippet: string; sent_at: string }[];
+  emailsSent: number;
+  pipeline: { stage: string; n: number }[];
+  worthApplying: { id: number; company: string; role_title: string; fit: 'strong' | 'moderate'; lane_name: string }[];
+  deadlines: Attention['deadlines'];
+  stale: Attention['stale'];
+  actions: Attention['actions'];
+}

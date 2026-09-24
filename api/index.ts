@@ -5,8 +5,10 @@ import { aiRoute } from '../lib/ai-routes.js';
 import { attention } from '../lib/attention.js';
 import { search } from '../lib/search.js';
 import { HttpError } from '../lib/ai.js';
-import { authUrl, checkState, gmailStatus, handleCallback, sendEmail, syncAll, syncReplies } from '../lib/gmail.js';
+import { authUrl, checkState, gmailStatus, handleCallback, sendEmail, sendToSelf, syncAll, syncReplies } from '../lib/gmail.js';
 import { mailList } from '../lib/mail.js';
+import { home } from '../lib/home.js';
+import { weekly, weeklyFocus, weeklyText } from '../lib/weekly.js';
 import { clearSession, isAuthed, issueSession } from '../lib/auth.js';
 
 type Ctx = { method: string; parts: string[]; body: any; query: URLSearchParams; host: string };
@@ -48,30 +50,50 @@ function buildInsert(table: string, fields: string[], body: any) {
   };
 }
 
-async function route(c: Ctx): Promise<Result> {
+export async function route(c: Ctx): Promise<Result> {
   const [a, b, c2, d] = c.parts;
   const id = b ? Number(b) : NaN;
 
   // ---- lanes ----
   if (a === 'lanes') {
     if (!b && c.method === 'GET') {
-      const lanes = await q(`SELECT * FROM lanes ORDER BY position, id`);
-      const counts = await q(`SELECT lane_id, stage, count(*)::int AS n FROM jobs GROUP BY lane_id, stage`);
+      // Active lanes only. Archived and trashed lanes live on the Archive page.
+      const lanes = await q(`SELECT * FROM lanes WHERE deleted_at IS NULL AND archived_at IS NULL ORDER BY position, id`);
+      const counts = await q(`SELECT lane_id, stage, count(*)::int AS n FROM jobs WHERE deleted_at IS NULL GROUP BY lane_id, stage`);
       return { json: lanes.map((l: any) => ({ ...l, counts: counts.filter((x: any) => x.lane_id === l.id) })) };
     }
     if (!b && c.method === 'POST') {
       const s = buildInsert('lanes', LANE_FIELDS, c.body);
       return { json: (await q(s.text, s.vals))[0] };
     }
-    if (b && c.method === 'GET') return { json: (await q(`SELECT * FROM lanes WHERE id=$1`, [id]))[0] ?? null };
-    if (b && c.method === 'PATCH') {
+    if (b && !c2 && c.method === 'GET') return { json: (await q(`SELECT * FROM lanes WHERE id=$1`, [id]))[0] ?? null };
+    if (b && !c2 && c.method === 'PATCH') {
       const s = buildUpdate('lanes', LANE_FIELDS, id, c.body);
       return { json: s ? (await q(s.text, s.vals))[0] : null };
     }
-    if (b && c.method === 'DELETE') {
-      await q(`DELETE FROM lanes WHERE id=$1`, [id]);
-      return { json: { ok: true } };
+    // Nothing is ever destroyed here: archive hides a lane, delete moves it (and every job in it) to the Trash. Restore brings it back.
+    if (b && c2 === 'archive' && c.method === 'POST') return { json: (await q(`UPDATE lanes SET archived_at = now() WHERE id=$1 RETURNING *`, [id]))[0] };
+    if (b && c2 === 'restore' && c.method === 'POST') return { json: (await q(`UPDATE lanes SET archived_at = NULL, deleted_at = NULL WHERE id=$1 RETURNING *`, [id]))[0] };
+    if (b && !c2 && c.method === 'DELETE') {
+      await q(`UPDATE lanes SET deleted_at = now() WHERE id=$1`, [id]);
+      return { json: { ok: true, trashed: true } };
     }
+  }
+
+  // ---- archive + trash ----
+  if (a === 'archive' && c.method === 'GET') {
+    const laneRows = (where: string) => q(
+      `SELECT l.*, (SELECT count(*)::int FROM jobs j WHERE j.lane_id = l.id AND j.deleted_at IS NULL) AS job_count FROM lanes l WHERE ${where} ORDER BY COALESCE(l.deleted_at, l.archived_at) DESC`);
+    return {
+      json: {
+        archivedLanes: await laneRows('l.archived_at IS NOT NULL AND l.deleted_at IS NULL'),
+        trashedLanes: await laneRows('l.deleted_at IS NOT NULL'),
+        // jobs deleted on their own (jobs inside a trashed lane are restored with the lane)
+        trashedJobs: await q(
+          `SELECT j.id, j.company, j.role_title, j.stage, j.deleted_at, l.name AS lane_name, l.color FROM jobs j JOIN lanes l ON l.id = j.lane_id
+            WHERE j.deleted_at IS NOT NULL AND l.deleted_at IS NULL ORDER BY j.deleted_at DESC`),
+      },
+    };
   }
 
   // ---- jobs ----
@@ -79,8 +101,8 @@ async function route(c: Ctx): Promise<Result> {
     if (!b && c.method === 'GET') {
       const lane = c.query.get('lane_id');
       const rows = lane
-        ? await q(`SELECT * FROM jobs WHERE lane_id=$1 ORDER BY updated_at DESC`, [Number(lane)])
-        : await q(`SELECT * FROM jobs ORDER BY updated_at DESC`);
+        ? await q(`SELECT * FROM jobs WHERE lane_id=$1 AND deleted_at IS NULL ORDER BY updated_at DESC`, [Number(lane)])
+        : await q(`SELECT * FROM jobs WHERE deleted_at IS NULL ORDER BY updated_at DESC`);
       return { json: rows };
     }
     if (!b && c.method === 'POST') {
@@ -95,9 +117,14 @@ async function route(c: Ctx): Promise<Result> {
         return { json: s ? (await q(s.text, s.vals))[0] : null };
       }
       if (c.method === 'DELETE') {
-        await q(`DELETE FROM jobs WHERE id=$1`, [id]);
-        return { json: { ok: true } };
+        await q(`UPDATE jobs SET deleted_at = now() WHERE id=$1`, [id]);   // to the Trash, never destroyed
+        return { json: { ok: true, trashed: true } };
       }
+    }
+    if (b && c2 === 'restore' && c.method === 'POST') {
+      const job = (await q(`UPDATE jobs SET deleted_at = NULL, updated_at = now() WHERE id=$1 RETURNING *`, [id]))[0];
+      if (job) await q(`UPDATE lanes SET deleted_at = NULL WHERE id=$1`, [job.lane_id]);   // a job needs a visible lane
+      return { json: job };
     }
     // job children: documents, notes, actions, contacts, emails
     const kids: Record<string, string> = {
@@ -146,6 +173,17 @@ async function route(c: Ctx): Promise<Result> {
         }
       }
     }
+  }
+
+  if (a === 'home' && c.method === 'GET') return { json: await home() };
+
+  // ---- weekly summary ----
+  if (a === 'weekly' && c.method === 'GET') return { json: await weekly() };
+  if (a === 'weekly' && b === 'focus' && c.method === 'POST') return { json: { focus: await weeklyFocus(await weekly()) } };
+  if (a === 'weekly' && b === 'email' && c.method === 'POST') {
+    const w = await weekly();
+    const focus = typeof c.body.focus === 'string' ? c.body.focus : '';
+    return { json: await sendToSelf('Your Careering week', weeklyText(w, focus)) };
   }
 
   // ---- attention + search ----

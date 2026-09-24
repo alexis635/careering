@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { ArrowLeft, Download, ExternalLink, Mail, Paperclip, Plus, Sparkles, Trash2, X } from 'lucide-react';
 import { api } from '../api';
 import FitBadge from '../components/FitBadge';
+import PrepView from '../components/PrepView';
 import type { Job, JobAction, JobContact, JobDoc, JobEmail, JobNote, LibItem } from '../types';
 
 const TABS = ['Overview', 'Contacts', 'Emails', 'Documents', 'Interview Prep', 'Notes Log', 'Next Actions'] as const;
@@ -60,6 +61,8 @@ export default function JobDetail() {
   const [busy, setBusy] = useState<string | null>(null);
   const [aiErr, setAiErr] = useState('');
   const [instructions, setInstructions] = useState('');
+  const [prepNote, setPrepNote] = useState('');
+  const [prepVer, setPrepVer] = useState<number | null>(null);
 
   const loadKids = () => {
     api.get<JobDoc[]>(`jobs/${id}/documents`).then(setDocs);
@@ -121,7 +124,9 @@ export default function JobDetail() {
     setBusy(action); setAiErr('');
     try {
       const out = await api.post<any>(`ai/${action}`, { job_id: Number(id), ...extra });
-      if (['parse', 'match', 'fetch'].includes(action)) setJob(out); else { loadKids(); setTab('Documents'); setOpenDoc(out.id); }
+      if (['parse', 'match', 'fetch'].includes(action)) setJob(out);
+      else if (action === 'prep') { loadKids(); setPrepVer(out.id); }
+      else { loadKids(); setTab('Documents'); setOpenDoc(out.id); }
     } catch (e: any) { setAiErr(e.message); } finally { setBusy(null); }
   }
   const save = async (patch: Partial<Job>) => setJob(await api.patch<Job>(`jobs/${id}`, patch));
@@ -136,7 +141,7 @@ export default function JobDetail() {
           <p className="text-teal">{job.role_title}</p>
         </div>
         {job.source_link && <a className="btn-ghost" href={job.source_link} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Posting</a>}
-        <button className="btn-ghost" onClick={async () => { if (confirm('Delete this entry and everything in it?')) { await api.del(`jobs/${id}`); nav(`/lanes/${job.lane_id}`); } }}><Trash2 size={14} /></button>
+        <button className="btn-ghost" title="Move to Trash (restorable)" onClick={async () => { if (confirm('Move this job to the Trash?\n\nEverything in it stays saved, and you can restore it anytime from Archive & Trash.')) { await api.del(`jobs/${id}`); nav(`/lanes/${job.lane_id}`); } }}><Trash2 size={14} /></button>
       </div>
 
       <div className="flex justify-center gap-1 border-b border-sky my-5 overflow-x-auto">
@@ -365,11 +370,45 @@ export default function JobDetail() {
         </div>
       )}
 
-      {tab === 'Interview Prep' && (
-        <div className="card p-5">
-          <TextBlock label="Questions, talking points, logistics" value={job.interview_prep} onSave={(v) => save({ interview_prep: v })} rows={18} />
-        </div>
-      )}
+      {tab === 'Interview Prep' && (() => {
+        const prepDocs = docs.filter((d) => d.kind === 'interview_prep');
+        const shown = prepDocs.find((d) => d.id === prepVer) ?? prepDocs[0];
+        return (
+          <div className="space-y-5">
+            {!logistics && (
+              <div className="card p-5 space-y-3">
+                <div className="text-center">
+                  <h2 className="text-xl font-semibold">Interview prep</h2>
+                  <p className="text-sm text-teal">Likely questions with talking points from your Library, gaps to prepare for, questions to ask them, and a checklist.</p>
+                </div>
+                <input className="input" placeholder="Optional: who you are meeting, the round, or what to focus on" value={prepNote} onChange={(e) => setPrepNote(e.target.value)} />
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <button className="btn" disabled={!!busy} onClick={() => ai('prep', { instructions: prepNote })}><Sparkles size={14} /> {busy === 'prep' ? 'Preparing, about a minute…' : shown ? 'Generate a new version' : 'Generate interview prep'}</button>
+                  {aiErr && <span className="text-sm text-red-700">{aiErr}</span>}
+                </div>
+              </div>
+            )}
+            {shown && (
+              <div className="card p-5">
+                <div className="flex flex-wrap items-center gap-3 mb-2">
+                  <span className="font-semibold">{shown.title}</span>
+                  {prepDocs.length > 1 && (
+                    <select className="input w-auto text-xs" value={shown.id} onChange={(e) => setPrepVer(Number(e.target.value))}>
+                      {prepDocs.map((d) => <option key={d.id} value={d.id}>v{d.version}, {format(new Date(d.created_at), 'MMM d, h:mm a')}</option>)}
+                    </select>
+                  )}
+                  <button className="btn-ghost ml-auto" onClick={() => navigator.clipboard?.writeText(shown.body)}>Copy</button>
+                  <button className="btn-ghost" title="Delete this version" onClick={async () => { if (confirm('Delete this version of the prep sheet?')) { await api.del(`jobs/${id}/documents/${shown.id}`); setPrepVer(null); loadKids(); } }}><Trash2 size={13} /></button>
+                </div>
+                <PrepView text={shown.body} />
+              </div>
+            )}
+            <div className="card p-5">
+              <TextBlock label="Your own notes, talking points, logistics" value={job.interview_prep} onSave={(v) => save({ interview_prep: v })} rows={10} />
+            </div>
+          </div>
+        );
+      })()}
 
       {tab === 'Notes Log' && (
         <div className="space-y-4">

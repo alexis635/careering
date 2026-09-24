@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Route, Routes, useMatch, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Route, Routes, useMatch, useNavigate } from 'react-router-dom';
 import { api } from './api';
+import Home from './pages/Home';
 import Lanes from './pages/Lanes';
 import LaneView from './pages/LaneView';
 import JobDetail from './pages/JobDetail';
 import Library from './pages/Library';
 import Search from './pages/Search';
 import Mail from './pages/Mail';
+import Weekly from './pages/Weekly';
+import ArchivePage from './pages/Archive';
 
 function Login({ onDone }: { onDone: () => void }) {
   const [pw, setPw] = useState('');
@@ -56,9 +59,10 @@ export default function App() {
     <div className="min-h-screen">
       <header className="bg-navy">
         <div className="max-w-7xl mx-auto px-4 h-14 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
-          <span className="font-display text-xl font-bold text-white">Careering</span>
+          <Link to="/" className="font-display text-xl font-bold text-white hover:text-sky transition-colors w-fit" title="Home">Careering</Link>
           <nav className="flex gap-1">
-            <NavLink to="/" end className={link}>Lanes</NavLink>
+            <NavLink to="/lanes" end className={link}>Lanes</NavLink>
+            <NavLink to="/weekly" className={link}>Week</NavLink>
             <NavLink to="/mail" className={link}>Mail</NavLink>
             <NavLink to="/library" className={link}>Library</NavLink>
           </nav>
@@ -72,12 +76,15 @@ export default function App() {
       </header>
       <main className="max-w-7xl mx-auto px-4 py-6">
         <Routes>
-          <Route path="/" element={<Lanes />} />
+          <Route path="/" element={<Home />} />
+          <Route path="/lanes" element={<Lanes />} />
           <Route path="/lanes/:id" element={<LaneView />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
           <Route path="/library" element={<Library />} />
           <Route path="/search" element={<Search />} />
+          <Route path="/weekly" element={<Weekly />} />
           <Route path="/mail" element={<Mail />} />
+          <Route path="/archive" element={<ArchivePage />} />
         </Routes>
       </main>
     </div>

@@ -100,6 +100,9 @@ const statements = [
   `ALTER TABLE job_contacts ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS fit TEXT`,
   `ALTER TABLE job_emails ADD COLUMN IF NOT EXISTS attachments JSONB NOT NULL DEFAULT '[]'`,
+  `ALTER TABLE lanes ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`,
+  `ALTER TABLE lanes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
   `CREATE INDEX IF NOT EXISTS jobs_lane_idx ON jobs(lane_id)`,
   `CREATE INDEX IF NOT EXISTS job_emails_thread_idx ON job_emails(gmail_thread_id)`,
 ];

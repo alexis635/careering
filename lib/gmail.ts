@@ -149,8 +149,17 @@ export async function syncReplies(jobId: number) {
 
 /** Check every job that has an app-started thread. Still never reads anything outside those threads. */
 export async function syncAll() {
-  const jobs = await q<any>(`SELECT DISTINCT job_id FROM job_emails WHERE direction='sent' AND gmail_thread_id IS NOT NULL`);
+  const jobs = await q<any>(`SELECT DISTINCT e.job_id FROM job_emails e JOIN jobs j ON j.id = e.job_id WHERE j.deleted_at IS NULL AND e.direction='sent' AND e.gmail_thread_id IS NOT NULL`);
   let added = 0;
   for (const { job_id } of jobs) added += (await syncReplies(job_id)).added;
   return { added, jobs: jobs.length };
+}
+
+/** Send a plain note to the connected address itself (used for the weekly summary). Not attached to any job. */
+export async function sendToSelf(subject: string, body: string) {
+  const { email } = await gmailStatus();
+  if (!email) throw new HttpError(400, 'Gmail is not connected');
+  const raw = buildMime(email, noDash(subject), noDash(body), []);
+  await gmail('messages/send', { method: 'POST', body: JSON.stringify({ raw: b64url(raw) }) });
+  return { sentTo: email };
 }

@@ -90,6 +90,27 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
     return saveDoc(jobId, 'resume', `Tailored resume for ${job.company || 'job'}`, text);
   }
 
+  // 3b. Interview prep sheet
+  if (action === 'prep') {
+    const sent = await q(`SELECT kind, title, left(body, 2500) AS body FROM job_documents WHERE job_id=$1 AND kind IN ('resume','cover_letter') ORDER BY created_at DESC LIMIT 2`, [jobId]);
+    const text = await ask(
+      'Prepare the candidate for an interview with this employer. Write an interview prep sheet in EXACTLY this plain-text layout, nothing else (no code fences, no intro):\n' +
+        '## LIKELY QUESTIONS\n' +
+        '8 to 10 questions. Each is one line "### 1. The question" followed by 2 to 4 bullets starting with "- " that are talking points. Cover: the opener (tell me about yourself, why this role, why this company), questions drawn from the posting\'s top requirements, two or three behavioral questions, and one or two about any real gap. ' +
+        'EVERY talking point must come from the candidate material: name the real employer or project and use its real numbers. Where a story fits, give it as situation, action, result in one bullet. Never invent experience, employers, numbers, or skills.\n' +
+        '## GAPS TO PREPARE FOR\n' +
+        'Only real gaps between the posting and the candidate material. Each is one line "### The gap" followed by bullets: how to frame it honestly, and the closest real experience to cite. Omit this whole section if there is no real gap.\n' +
+        '## QUESTIONS TO ASK THEM\n' +
+        '6 thoughtful, specific questions as bullets starting with "- ".\n' +
+        '## BEFORE THE INTERVIEW\n' +
+        '5 short checklist bullets specific to this posting: what to research, what to have ready, logistics.' +
+        (body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''),
+      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nMATCH NOTES (strengths and gaps already found):\n${job.match_notes || '(none yet)'}\n\nCANDIDATE MATERIAL:\n${lib.text}\n\nDRAFTS SUBMITTED FOR THIS JOB:\n${sent.map((d: any) => `[${d.kind}] ${d.body}`).join('\n\n') || '(none)'}`,
+      9000,
+    );
+    return saveDoc(jobId, 'interview_prep', `Interview prep for ${job.company || 'job'}`, text);
+  }
+
   // 4. Cover letter or outreach email
   if (action === 'cover_letter' || action === 'outreach') {
     const isOutreach = action === 'outreach';
@@ -125,7 +146,7 @@ async function askRoute(body: Body & { q?: string }) {
   }
   const hits = (await search(question.split(/\s+/).filter((w) => w.length > 3).slice(0, 4).join(' ') || question, body.job_id ? Number(body.job_id) : null)).slice(0, 10);
   if (hits.length) parts.push(`OTHER MATCHES ACROSS THE APP\n${hits.map((h) => `[${h.type}] ${h.label}: ${h.snippet}`).join('\n')}`);
-  const lane = await q(`SELECT l.name, count(j.id)::int AS jobs FROM lanes l LEFT JOIN jobs j ON j.lane_id=l.id GROUP BY l.id, l.name ORDER BY l.position`);
+  const lane = await q(`SELECT l.name, count(j.id)::int AS jobs FROM lanes l LEFT JOIN jobs j ON j.lane_id=l.id AND j.deleted_at IS NULL WHERE l.deleted_at IS NULL GROUP BY l.id, l.name ORDER BY l.position`);
   parts.push(`LANES: ${JSON.stringify(lane)}`);
   const answer = await ask(
     'Answer the user\'s question about their job search using only the material below. Be brief and specific. Name the job or lane you are talking about. If the material does not contain the answer, say so.',
