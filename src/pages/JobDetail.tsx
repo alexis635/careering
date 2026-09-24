@@ -453,7 +453,10 @@ export default function JobDetail() {
           </form>
           {notes.map((n) => (
             <div key={n.id} className="card p-4">
-              <div className="text-xs text-teal mb-1">{format(new Date(n.created_at), 'MMM d, yyyy · h:mm a')}{n.kind !== 'note' && ` · ${n.kind}`}</div>
+              <div className="flex items-start gap-3 mb-1">
+                <div className="text-xs text-teal flex-1">{format(new Date(n.created_at), 'MMM d, yyyy · h:mm a')}{n.kind !== 'note' && ` · ${n.kind}`}</div>
+                <button className="text-teal hover:text-navy" title="Move to Recently deleted (you can restore it)" onClick={async () => { await api.del(`jobs/${id}/notes/${n.id}`); loadKids(); }}><Trash2 size={14} /></button>
+              </div>
               <p className="whitespace-pre-wrap text-sm">{n.body}</p>
             </div>
           ))}
