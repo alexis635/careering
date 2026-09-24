@@ -51,7 +51,7 @@ export default function Home() {
         ))}
       </div>
 
-      <p className="text-center -mt-2"><Link to="/weekly" className="text-sm text-teal underline">See your week in full</Link><span className="text-teal mx-2">|</span><Link to="/timeline" className="text-sm text-teal underline">See your lane timeline</Link></p>
+      <p className="text-center -mt-2"><Link to="/weekly" className="text-sm text-teal underline">See your week in full</Link><span className="text-teal mx-2">|</span><Link to="/timeline" className="text-sm text-teal underline">See your lane timeline</Link><span className="text-teal mx-2">|</span><Link to="/case" className="text-sm text-teal underline">Build a case for a raise</Link></p>
 
       <div className="card p-5">
         <h2 className="text-xl font-semibold text-center mb-3">Add a job</h2>

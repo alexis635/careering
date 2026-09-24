@@ -134,6 +134,17 @@ const statements = [
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at TIMESTAMPTZ
   )`,
+  `CREATE TABLE IF NOT EXISTS career_cases (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    purpose TEXT NOT NULL DEFAULT 'promotion',
+    employer TEXT NOT NULL DEFAULT '',
+    params JSONB NOT NULL DEFAULT '{}',
+    body TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+  )`,
   `CREATE INDEX IF NOT EXISTS jobs_lane_idx ON jobs(lane_id)`,
   `CREATE INDEX IF NOT EXISTS job_emails_thread_idx ON job_emails(gmail_thread_id)`,
 ];

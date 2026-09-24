@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { ExternalLink, Plus, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '../api';
@@ -77,7 +78,10 @@ export default function Wins() {
   return (
     <div className="space-y-5">
       <p className="text-sm text-teal text-center">A running record of what you have done and what it achieved. Keep it current, and it becomes your evidence for resumes, reviews, promotions, and raises. One click turns a win into a resume bullet.</p>
-      <div className="text-center"><button className="btn" onClick={() => { setAdding((v) => !v); setEditing(null); setErr(''); }}><Plus size={16} /> Add a win</button></div>
+      <div className="flex flex-wrap justify-center gap-2">
+        <button className="btn" onClick={() => { setAdding((v) => !v); setEditing(null); setErr(''); }}><Plus size={16} /> Add a win</button>
+        <Link to="/case" className="btn-ghost"><Sparkles size={14} /> Build my case for a raise or promotion</Link>
+      </div>
       {adding && <WinForm employers={employers} onSave={(b) => save(b)} onCancel={() => setAdding(false)} busy={busy} err={err} />}
 
       {(wins?.length ?? 0) > 4 && (

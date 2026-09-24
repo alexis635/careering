@@ -111,14 +111,24 @@ export function pageCount(bytes: Uint8Array): number {
  * leftover space into breathing room, so there is never a big empty gap at the bottom.
  * If the content cannot fit one page even at the smallest size, it falls back to a clean two-page layout.
  */
-export async function fitResume(render: RenderFn, opts: { fsMin?: number; fsMax?: number; gMax?: number } = {}): Promise<{ bytes: Uint8Array; layout: Layout; pages: number }> {
+export async function fitResume(render: RenderFn, opts: { fsMin?: number; fsMax?: number; gMax?: number; fsFloor?: number } = {}): Promise<{ bytes: Uint8Array; layout: Layout; pages: number }> {
   const FS_MIN = opts.fsMin ?? 8, FS_MAX = opts.fsMax ?? 10.5, G_MAX = opts.gMax ?? 2.6;
   const attempt = async (layout: Layout) => { const bytes = await render(layout); return { bytes, layout, pages: pageCount(bytes) }; };
 
   // phase 1: biggest font that fits on one page at normal spacing
   let lo = FS_MIN, hi = FS_MAX;
   let best = await attempt({ fs: lo, g: 1 });
-  if (best.pages > 1) return best;                    // too long for one page: accept two clean pages
+  if (best.pages > 1) {
+    // Too long at the preferred minimum. Before settling for two pages, see whether a slightly smaller (still readable) size fits one.
+    if (opts.fsFloor && opts.fsFloor < lo) {
+      const floor = await attempt({ fs: opts.fsFloor, g: 1 });
+      if (floor.pages > 1) return best;               // genuinely two pages: keep the comfortable size
+      let a = opts.fsFloor, b = lo, fit = floor;
+      for (let n = 0; n < 4; n++) { const mid = (a + b) / 2; const r = await attempt({ fs: mid, g: 1 }); if (r.pages === 1) { fit = r; a = mid; } else b = mid; }
+      return fit;
+    }
+    return best;                                       // too long for one page: accept two clean pages
+  }
   const top = await attempt({ fs: hi, g: 1 });
   if (top.pages === 1) best = top;
   else {
@@ -174,14 +184,15 @@ export function LetterDoc({ text, layout = { fs: 11, g: 1 } }: { text: string; l
   );
 }
 
-export type PdfKind = 'resume' | 'letter';
+export type PdfKind = 'resume' | 'letter' | 'case';
 
 async function fitPdf(kind: PdfKind, text: string) {
   const render: RenderFn = async (layout) => {
     const doc = kind === 'letter' ? <LetterDoc text={text} layout={layout} /> : <ResumeDoc text={text} layout={layout} />;
     return new Uint8Array(await (await pdf(doc).toBlob()).arrayBuffer());
   };
-  return fitResume(render, kind === 'letter' ? { fsMin: 10, fsMax: 12.5, gMax: 2.2 } : {});
+  // a case document may run to two pages at a comfortable size; it only shrinks to one page if a modest size gets it there
+  return fitResume(render, kind === 'letter' ? { fsMin: 10, fsMax: 12.5, gMax: 2.2 } : kind === 'case' ? { fsMin: 10, fsMax: 11.5, gMax: 1.6, fsFloor: 9 } : {});
 }
 
 export async function pdfBlob(kind: PdfKind, text: string): Promise<Blob> {

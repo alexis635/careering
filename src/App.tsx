@@ -11,6 +11,7 @@ import Mail from './pages/Mail';
 import Weekly from './pages/Weekly';
 import Timeline from './pages/Timeline';
 import ResumeBuilder from './pages/Resume';
+import CaseBuilder from './pages/Case';
 import ArchivePage from './pages/Archive';
 
 function Login({ onDone }: { onDone: () => void }) {
@@ -88,6 +89,7 @@ export default function App() {
           <Route path="/search" element={<Search />} />
           <Route path="/timeline" element={<Timeline />} />
           <Route path="/resume" element={<ResumeBuilder />} />
+          <Route path="/case" element={<CaseBuilder />} />
           <Route path="/weekly" element={<Weekly />} />
           <Route path="/mail" element={<Mail />} />
           <Route path="/archive" element={<ArchivePage />} />

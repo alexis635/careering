@@ -9,6 +9,7 @@ import { authUrl, checkState, gmailStatus, handleCallback, sendEmail, sendToSelf
 import { mailList } from '../lib/mail.js';
 import { home } from '../lib/home.js';
 import * as vault from '../lib/vault.js';
+import * as cases from '../lib/cases.js';
 import { weekly, weeklyFocus, weeklyText } from '../lib/weekly.js';
 import { clearSession, isAuthed, issueSession } from '../lib/auth.js';
 
@@ -205,6 +206,13 @@ export async function route(c: Ctx): Promise<Result> {
     if (b && c2 === 'restore' && c.method === 'POST') return { json: (await vault.restoreWin(id))[0] };
     if (b && !c2 && c.method === 'PATCH') return { json: await vault.updateWin(id, c.body) };
     if (b && !c2 && c.method === 'DELETE') { await vault.trashWin(id); return { json: { ok: true, trashed: true } }; }
+  }
+
+  if (a === 'cases') {
+    if (!b && c.method === 'GET') return { json: await cases.listCases(c.query.get('deleted') === '1') };
+    if (b && c2 === 'restore' && c.method === 'POST') return { json: await cases.restoreCase(id) };
+    if (b && !c2 && c.method === 'PATCH') return { json: await cases.updateCase(id, c.body) };
+    if (b && !c2 && c.method === 'DELETE') { await cases.trashCase(id); return { json: { ok: true, trashed: true } }; }
   }
 
   // ---- weekly summary ----
