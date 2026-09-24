@@ -3,7 +3,7 @@ import { HttpError } from './ai.js';
 import { noDash } from '../src/lib/noDash.js';
 
 const D = (v: any) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
-const KINDS = ['task', 'goal', 'note', 'contact', 'event', 'project', 'document', 'stakeholder', 'risk', 'course', 'lesson', 'cert', 'client', 'deliverable', 'invoice', 'training'];
+const KINDS = ['task', 'goal', 'note', 'contact', 'event', 'project', 'document', 'stakeholder', 'risk', 'course', 'unit', 'lesson', 'cert', 'client', 'deliverable', 'invoice', 'training'];
 const JOB_TYPES = ['general', 'pm', 'teaching', 'freelance'];
 const clean = (v: any, n: number) => noDash(String(v ?? '')).trim().slice(0, n);
 
@@ -73,7 +73,8 @@ export const trashWorkspace = (id: number) => q(`UPDATE workspaces SET deleted_a
 export const restoreWorkspace = async (id: number) => { await q(`UPDATE workspaces SET deleted_at = NULL WHERE id=$1`, [id]); return getWorkspace(id); };
 
 export async function createItem(workspaceId: number, b: any) {
-  const kind = KINDS.includes(b.kind) ? b.kind : 'task';
+  if (!KINDS.includes(b.kind)) throw new HttpError(400, `Unknown section: ${b.kind}`);   // never silently file something under Tasks
+  const kind = b.kind;
   const title = clean(b.title, 300);
   if (!title) throw new HttpError(400, 'Add a title');
   return (await q(`INSERT INTO ws_items (workspace_id, kind, title, body, due_on, extra) VALUES ($1,$2,$3,$4,$5,$6::jsonb) RETURNING ${ITEM}`,
