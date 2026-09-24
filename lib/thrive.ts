@@ -3,13 +3,14 @@ import { HttpError } from './ai.js';
 import { noDash } from '../src/lib/noDash.js';
 
 const D = (v: any) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
-const KINDS = ['task', 'goal', 'note', 'contact', 'event', 'project', 'document', 'stakeholder', 'risk', 'course', 'lesson', 'cert', 'client', 'deliverable', 'invoice'];
+const KINDS = ['task', 'goal', 'note', 'contact', 'event', 'project', 'document', 'stakeholder', 'risk', 'course', 'lesson', 'cert', 'client', 'deliverable', 'invoice', 'training'];
 const JOB_TYPES = ['general', 'pm', 'teaching', 'freelance'];
 const clean = (v: any, n: number) => noDash(String(v ?? '')).trim().slice(0, n);
 
 const WS = `w.id, w.role_id, w.kind AS job_type, w.responsibilities, w.wrapup, w.wrapped_up_at, w.created_at, w.deleted_at,
   r.employer, r.title, to_char(r.start_date,'YYYY-MM-DD') AS start_date, to_char(r.end_date,'YYYY-MM-DD') AS end_date`;
-const ITEM = `id, workspace_id, kind, title, body, to_char(due_on,'YYYY-MM-DD') AS due_on, done_at, extra, created_at, deleted_at`;
+const ITEM = `id, workspace_id, kind, title, body, to_char(due_on,'YYYY-MM-DD') AS due_on, done_at, extra, file_name, size, created_at, deleted_at`;
+const FILE_OK = /^(application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|text\/plain|image\/(png|jpeg))$/;
 
 /** Workspaces, one per role. Active ones first. */
 export async function listWorkspaces(deleted: boolean) {
@@ -89,3 +90,21 @@ export async function updateItem(id: number, b: any) {
 }
 export const trashItem = (id: number) => q(`UPDATE ws_items SET deleted_at = now() WHERE id=$1`, [id]);
 export const restoreItem = async (id: number) => (await q(`UPDATE ws_items SET deleted_at = NULL WHERE id=$1 RETURNING ${ITEM}`, [id]))[0];
+
+/** One private file per item (a handbook PDF, a training certificate). Only ever served to a signed-in user. Never replaced or removed: delete the item instead and it can be restored. */
+export async function attachItemFile(id: number, b: any) {
+  const f = b.file;
+  if (!f?.data) throw new HttpError(400, 'Choose a file to attach');
+  const buf = Buffer.from(String(f.data), 'base64');
+  if (buf.length > 3_000_000) throw new HttpError(400, 'That file is over 3 MB. Try a compressed PDF.');
+  if (!FILE_OK.test(String(f.mime))) throw new HttpError(400, 'Attach a PDF, Word document, text file, PNG, or JPG');
+  const have = (await q(`SELECT file_name FROM ws_items WHERE id=$1 AND deleted_at IS NULL`, [id]))[0];
+  if (!have) throw new HttpError(404, 'Item not found');
+  if (have.file_name) throw new HttpError(409, 'This item already has a file. Add a new item for another one.');
+  return (await q(`UPDATE ws_items SET file_name=$2, mime=$3, size=$4, file_data=$5 WHERE id=$1 RETURNING ${ITEM}`, [id, clean(f.name, 200) || 'file', String(f.mime), buf.length, buf]))[0];
+}
+export async function getItemFile(id: number) {
+  const r = (await q(`SELECT file_name, mime, encode(file_data,'base64') AS b64 FROM ws_items WHERE id=$1 AND file_data IS NOT NULL`, [id]))[0];
+  if (!r) throw new HttpError(404, 'No file is attached to that item');
+  return { name: r.file_name as string, mime: r.mime as string, data: Buffer.from(r.b64, 'base64') };
+}

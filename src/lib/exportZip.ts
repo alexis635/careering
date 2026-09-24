@@ -4,7 +4,7 @@ import { noDash } from './noDash';
 const safe = (s: string) => s.replace(/[^\w .,&()'-]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 80) || 'untitled';
 
 /** Pack the full export (plain data plus the uploaded files) into one zip. Pure, so it can be tested outside the browser. */
-export function buildExportZip(data: { exported_at: string; tables: Record<string, any[]> }, fileBytes: Record<number, Uint8Array>, fileNames: Record<number, string>): Uint8Array {
+export function buildExportZip(data: { exported_at: string; tables: Record<string, any[]> }, fileBytes: Record<number, Uint8Array>, fileNames: Record<number, string>, workFiles: { id: number; name: string; bytes: Uint8Array }[] = []): Uint8Array {
   const out: Record<string, Uint8Array> = {};
   for (const [name, rows] of Object.entries(data.tables)) out[`data/${name}.json`] = strToU8(JSON.stringify(rows, null, 2));
 
@@ -19,6 +19,8 @@ export function buildExportZip(data: { exported_at: string; tables: Record<strin
   for (const d of (data.tables.job_documents ?? [])) out[`job documents/${safe(d.title)} (${d.id}).txt`] = strToU8(d.body);
   for (const [id, bytes] of Object.entries(fileBytes)) out[`uploaded documents/${id} ${safe(fileNames[Number(id)] ?? 'file')}`] = bytes;
 
+  for (const f of workFiles) out[`job files/${f.id} ${safe(f.name)}`] = f.bytes;
+
   out['README.txt'] = strToU8(noDash([
     'Careering export',
     `Created ${data.exported_at}`,
@@ -28,6 +30,7 @@ export function buildExportZip(data: { exported_at: string; tables: Record<strin
     'cases/           your saved promotion, raise, and review cases',
     'job documents/   every cover letter, email draft, and interview prep sheet',
     'uploaded documents/  the files you uploaded to Career documents (transcript, degree, and so on)',
+    'job files/       handbooks and training certificates saved in your Thrive workspaces',
     'wins.txt, bullet bank.txt, career facts.txt   readable copies',
     '',
     'Not included on purpose: your Gmail connection, which is a secret key and stays in the app.',

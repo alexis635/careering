@@ -21,10 +21,11 @@ export async function exportAll() {
     t('roles', `SELECT * FROM roles ORDER BY id`),
     t('decks', `SELECT * FROM decks ORDER BY id`),
     t('workspaces', `SELECT * FROM workspaces ORDER BY id`),
-    t('ws_items', `SELECT * FROM ws_items ORDER BY id`),
+    t('ws_items', `SELECT id, workspace_id, kind, title, body, due_on, done_at, extra, file_name, mime, size, created_at, deleted_at FROM ws_items ORDER BY id`),
     t('comp_entries', `SELECT id, role_id, effective_on, kind, amount::float8 AS amount, note, created_at, deleted_at FROM comp_entries ORDER BY id`),
     t('settings', `SELECT key, value FROM settings WHERE key = 'portfolio_url'`),
   ]);
   const files = await q(`SELECT id, file_name FROM career_docs WHERE file_data IS NOT NULL ORDER BY id`);
-  return { exported_at: new Date().toISOString(), tables: Object.fromEntries(tables), files };
+  const work_files = await q(`SELECT id, file_name FROM ws_items WHERE file_data IS NOT NULL ORDER BY id`);
+  return { exported_at: new Date().toISOString(), tables: Object.fromEntries(tables), files, work_files };
 }

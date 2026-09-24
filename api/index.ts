@@ -247,6 +247,8 @@ export async function route(c: Ctx): Promise<Result> {
     if (b && c2 === 'items' && c.method === 'POST') return { json: await thrive.createItem(id, c.body) };
   }
   if (a === 'ws-items' && b) {
+    if (c2 === 'file' && c.method === 'GET') return { json: null, file: await thrive.getItemFile(id) };
+    if (c2 === 'file' && c.method === 'POST') return { json: await thrive.attachItemFile(id, c.body) };
     if (c2 === 'restore' && c.method === 'POST') return { json: await thrive.restoreItem(id) };
     if (!c2 && c.method === 'PATCH') return { json: await thrive.updateItem(id, c.body) };
     if (!c2 && c.method === 'DELETE') { await thrive.trashItem(id); return { json: { ok: true, trashed: true } }; }

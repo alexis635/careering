@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { format } from 'date-fns';
-import { ArrowLeft, Plus, RotateCcw, Trash2 } from 'lucide-react';
+import { addDays, addMonths, endOfMonth, endOfWeek, format, isSameMonth, startOfMonth, startOfWeek } from 'date-fns';
+import { AlertTriangle, ArrowLeft, Award, BookOpen, Briefcase, CalendarDays, CheckSquare, ChevronLeft, ChevronRight, ClipboardList, FileText, Flag, FolderKanban, GraduationCap, LayoutDashboard, NotebookPen, Package, Paperclip, Plus, Receipt, RotateCcw, Target, Trash2, Trophy, Users } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { api } from '../api';
+import { MAX_UPLOAD, kb, readFile } from '../lib/files';
 import type { Win, Workspace, WsItem } from '../types';
 
 const day = (d: string | null) => (d ? format(new Date(d + 'T00:00:00'), 'MMM d, yyyy') : '');
@@ -13,7 +15,7 @@ export const JOB_TYPES: Record<string, string> = { general: 'General', pm: 'Proj
 /** How each list section behaves. One generic list draws them all, so adding a module is adding a line here. */
 interface Spec {
   kind: string; label: string; add: string; body?: string; due?: string; time?: boolean; done?: boolean; email?: boolean; link?: boolean; amount?: boolean;
-  status?: string[]; note?: string; empty: string;
+  status?: string[]; note?: string; empty: string; file?: string;
 }
 const SPECS: Record<string, Spec> = {
   tasks: { kind: 'task', label: 'Tasks', add: 'Add a task', due: 'Due', done: true, empty: 'No tasks yet.' },
@@ -21,7 +23,8 @@ const SPECS: Record<string, Spec> = {
   goals: { kind: 'goal', label: 'Goals', add: 'Add a goal, like: run the fall showcase', body: 'Optional detail', due: 'By', done: true, empty: 'No goals yet.' },
   notes: { kind: 'note', label: 'Notes and 1:1s', add: 'Title, like: 1:1 with my manager', body: 'What was said, decided, or promised', empty: 'No notes yet.' },
   people: { kind: 'contact', label: 'People', add: 'Name', body: 'Their role and how they help', email: true, empty: 'No one yet.' },
-  docs: { kind: 'document', label: 'Documents and handbooks', add: 'Document name, like: Employee handbook', body: 'What it covers, or the parts you need to remember', link: true, note: 'Keep links and notes here. Employer handbooks can be confidential, so paste only what you are allowed to keep. Files and questions to AI are not part of this yet.', empty: 'Nothing saved yet.' },
+  trainings: { kind: 'training', label: 'Trainings', add: 'Training, like: Mandated reporter', body: 'What it covers, who assigns it, how you finish it', due: 'Due by', status: ['Not started', 'In progress', 'Complete'], link: true, file: 'Attach certificate', note: 'Track the trainings your employer requires. Attach the completion certificate when you have it, and give each a due date so it shows on your Schedule.', empty: 'No trainings yet.' },
+  docs: { kind: 'document', label: 'Documents and handbooks', add: 'Document name, like: Employee handbook', body: 'What it covers, or the parts you need to remember', link: true, file: 'Attach a PDF', note: 'Upload a handbook or policy as a PDF (up to 3 MB) or keep a link and notes. Employer handbooks can be confidential, so keep only what you are allowed to. Files stay private to you.', empty: 'Nothing saved yet.' },
   stakeholders: { kind: 'stakeholder', label: 'Stakeholders', add: 'Name', body: 'Role, what they care about, how to keep them informed', email: true, empty: 'No stakeholders yet.' },
   risks: { kind: 'risk', label: 'Risks', add: 'Add a risk', body: 'What could go wrong and what you will do about it', status: ['Open', 'Watching', 'Resolved'], empty: 'No risks logged.' },
   courses: { kind: 'course', label: 'Courses', add: 'Course or class', body: 'Grade level, focus, what you are covering', note: 'Keep student names, grades, and personal details out of Careering.', empty: 'No courses yet.' },
@@ -32,14 +35,21 @@ const SPECS: Record<string, Spec> = {
   invoices: { kind: 'invoice', label: 'Invoices', add: 'Invoice, like: October retainer', body: 'What it covers', due: 'Due', amount: true, status: ['Draft', 'Sent', 'Paid'], empty: 'No invoices yet.' },
 };
 
-interface Sec { id: string; label: string }
-const CORE: Sec[] = [{ id: 'overview', label: 'Overview' }, { id: 'schedule', label: 'Schedule' }, { id: 'tasks', label: 'Tasks' }, { id: 'projects', label: 'Projects' }, { id: 'goals', label: 'Goals' }, { id: 'notes', label: 'Notes and 1:1s' }, { id: 'people', label: 'People' }, { id: 'docs', label: 'Documents and handbooks' }, { id: 'wins', label: 'Wins' }];
+interface Sec { id: string; label: string; icon: LucideIcon }
+const GROUPS: { title: string; secs: Sec[] }[] = [
+  { title: '', secs: [{ id: 'overview', label: 'Overview', icon: LayoutDashboard }, { id: 'schedule', label: 'Schedule', icon: CalendarDays }] },
+  { title: 'Work', secs: [{ id: 'tasks', label: 'Tasks', icon: CheckSquare }, { id: 'projects', label: 'Projects', icon: FolderKanban }, { id: 'goals', label: 'Goals', icon: Target }, { id: 'wins', label: 'Wins', icon: Trophy }] },
+  { title: 'People and notes', secs: [{ id: 'notes', label: 'Notes and 1:1s', icon: NotebookPen }, { id: 'people', label: 'People', icon: Users }] },
+  { title: 'Records', secs: [{ id: 'docs', label: 'Handbooks and documents', icon: FileText }, { id: 'trainings', label: 'Trainings', icon: GraduationCap }] },
+];
 const BY_TYPE: Record<string, Sec[]> = {
   general: [],
-  pm: [{ id: 'stakeholders', label: 'Stakeholders' }, { id: 'risks', label: 'Risks' }],
-  teaching: [{ id: 'courses', label: 'Courses' }, { id: 'lessons', label: 'Lesson plans' }, { id: 'certs', label: 'Certification progress' }],
-  freelance: [{ id: 'clients', label: 'Clients' }, { id: 'deliverables', label: 'Deliverables' }, { id: 'invoices', label: 'Invoices' }],
+  pm: [{ id: 'stakeholders', label: 'Stakeholders', icon: Users }, { id: 'risks', label: 'Risks', icon: AlertTriangle }],
+  teaching: [{ id: 'courses', label: 'Courses', icon: BookOpen }, { id: 'lessons', label: 'Lesson plans', icon: ClipboardList }, { id: 'certs', label: 'Certification progress', icon: Award }],
+  freelance: [{ id: 'clients', label: 'Clients', icon: Briefcase }, { id: 'deliverables', label: 'Deliverables', icon: Package }, { id: 'invoices', label: 'Invoices', icon: Receipt }],
 };
+const WRAP: Sec = { id: 'wrap', label: 'Wrap up', icon: Flag };
+const CLOSED = ['Done', 'Complete', 'Paid', 'Resolved', 'Submitted'];
 const CHECKS: [string, string, string?, string?][] = [
   ['wins', 'Capture your wins from this job', '/rise', 'Open Rise'],
   ['vault', 'Save your offer letter, reviews, recommendation letters, and certificates', '/vault', 'Open Vault'],
@@ -72,6 +82,8 @@ export default function WorkspacePage() {
 
   const Section = ({ spec }: { spec: Spec }) => {
     const [f, setF] = useState({ title: '', body: '', due_on: '', email: '', link: '', amount: '', time: '', status: spec.status?.[0] ?? '' });
+    const [file, setFile] = useState<File | null>(null);
+    const [err, setErr] = useState('');
     const list = items.filter((i) => i.kind === spec.kind);
     const open = spec.done ? [...list.filter((i) => !i.done_at).sort((a, b) => (a.due_on ?? '9').localeCompare(b.due_on ?? '9')), ...list.filter((i) => i.done_at)] : list;
     const add = async () => {
@@ -81,8 +93,11 @@ export default function WorkspacePage() {
       if (spec.link && f.link) extra.link = f.link;
       if (spec.amount && f.amount) extra.amount = f.amount;
       if (spec.status) extra.status = f.status;
-      await api.post(`workspaces/${id}/items`, { kind: spec.kind, title: f.title, body: f.body, due_on: f.due_on || null, extra });
-      setF({ ...f, title: '', body: '', due_on: '', email: '', link: '', amount: '' }); load();
+      if (file && file.size > MAX_UPLOAD) { setErr('That file is over 3 MB. Try a compressed PDF.'); return; }
+      setErr('');
+      const made = await api.post<WsItem>(`workspaces/${id}/items`, { kind: spec.kind, title: f.title, body: f.body, due_on: f.due_on || null, extra });
+      if (file) { try { await api.post(`ws-items/${made.id}/file`, { file: await readFile(file) }); } catch (e: any) { setMsg(`Saved, but the file did not attach: ${e.message}`); } }
+      setFile(null); setF({ ...f, title: '', body: '', due_on: '', email: '', link: '', amount: '' }); load();
     };
     return (
       <div className="space-y-4">
@@ -96,8 +111,10 @@ export default function WorkspacePage() {
             {spec.amount && <input className="input w-32" inputMode="decimal" placeholder="Amount" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} />}
             {spec.status && <select className="input w-auto" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>{spec.status.map((s) => <option key={s}>{s}</option>)}</select>}
             {spec.due && <input className="input w-auto" type="date" title={spec.due} value={f.due_on} onChange={(e) => setF({ ...f, due_on: e.target.value })} />}
+            {spec.file && <label className="btn-ghost cursor-pointer text-xs"><Paperclip size={13} /> {file ? file.name.slice(0, 24) : spec.file}<input type="file" className="hidden" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" onChange={(e) => { setFile(e.target.files?.[0] ?? null); e.target.value = ''; }} /></label>}
             <button className="btn" disabled={!f.title.trim()} onClick={add}><Plus size={14} /> Add</button>
           </div>
+          {err && <div className="text-sm text-red-700">{err}</div>}
         </div>
         <div className="card p-4">
           {open.length === 0 && <p className="text-sm text-teal">{spec.empty}</p>}
@@ -111,6 +128,8 @@ export default function WorkspacePage() {
                   {i.due_on && <span>{spec.due} {day(i.due_on)}</span>}
                   {i.extra?.amount && <span>${Number(i.extra.amount).toLocaleString()}</span>}
                   {i.extra?.email && <a href={`mailto:${i.extra.email}`} className="underline">{i.extra.email}</a>}
+                  {i.file_name && <a href={`/api/ws-items/${i.id}/file`} className="underline inline-flex items-center gap-1"><Paperclip size={11} /> {i.file_name} ({kb(i.size ?? null)})</a>}
+                  {spec.file && !i.file_name && <label className="underline cursor-pointer inline-flex items-center gap-1"><Paperclip size={11} /> Attach a file<input type="file" className="hidden" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" onChange={async (e) => { const fl = e.target.files?.[0]; e.target.value = ''; if (!fl) return; if (fl.size > MAX_UPLOAD) { setMsg('That file is over 3 MB. Try a compressed PDF.'); return; } try { await api.post(`ws-items/${i.id}/file`, { file: await readFile(fl) }); load(); } catch (er: any) { setMsg(er.message); } }} /></label>}
                   {i.extra?.link && <a href={/^https?:/.test(i.extra.link) ? i.extra.link : `https://${i.extra.link}`} target="_blank" rel="noreferrer" className="underline">Open link</a>}
                 </div>
               </div>
@@ -124,12 +143,16 @@ export default function WorkspacePage() {
   };
 
   const Schedule = () => {
-    const [f, setF] = useState({ title: '', date: today(), time: '', body: '' });
-    const dated = items.filter((i) => i.due_on && !i.done_at && i.kind !== 'note');
+    const [view, setView] = useState<'calendar' | 'list'>('calendar');
+    const [month, setMonth] = useState(startOfMonth(new Date()));
+    const [picked, setPicked] = useState(today());
+    const [f, setF] = useState({ title: '', time: '' });
+    const dated = items.filter((i) => i.due_on && !i.done_at && i.kind !== 'note' && !CLOSED.includes(i.extra?.status ?? ''));
     const key = (i: WsItem) => `${i.due_on}${i.extra?.time ?? ''}`;
     const upcoming = dated.filter((i) => i.due_on! >= today()).sort((a, b) => key(a).localeCompare(key(b)));
     const past = dated.filter((i) => i.due_on! < today()).sort((a, b) => key(b).localeCompare(key(a)));
-    const LABEL: Record<string, string> = { event: 'Event', task: 'Task', goal: 'Goal', project: 'Project', deliverable: 'Deliverable', lesson: 'Lesson', cert: 'Requirement', invoice: 'Invoice' };
+    const LABEL: Record<string, string> = { event: 'Event', task: 'Task', goal: 'Goal', project: 'Project', deliverable: 'Deliverable', lesson: 'Lesson', cert: 'Requirement', invoice: 'Invoice', training: 'Training' };
+    const TONE: Record<string, string> = { event: 'bg-navy text-white', training: 'bg-amber-100 text-amber-900', invoice: 'bg-emerald-100 text-emerald-900' };
     const line = (i: WsItem) => (
       <div key={i.id} className="flex items-center gap-3 py-1.5 text-sm border-b border-sky/60 last:border-0">
         <span className="w-28 text-teal shrink-0">{day(i.due_on)}{i.extra?.time ? `, ${i.extra.time}` : ''}</span>
@@ -137,26 +160,80 @@ export default function WorkspacePage() {
         <span className="text-xs text-teal">{LABEL[i.kind] ?? i.kind}</span>
       </div>
     );
+    const weeks: Date[] = [];
+    for (let d = startOfWeek(startOfMonth(month)); d <= endOfWeek(endOfMonth(month)); d = addDays(d, 1)) weeks.push(d);
+    const on = (d: string) => dated.filter((i) => i.due_on === d).sort((a, b) => (a.extra?.time ?? '').localeCompare(b.extra?.time ?? ''));
     return (
       <div className="space-y-4">
-        <p className="text-sm text-teal">Everything with a date in this job, in one view. Tasks, goals, deliverables and the rest show up here once you give them a date.</p>
-        <div className="card p-4 space-y-2">
-          <input className="input" placeholder="Add an event, like: staff meeting" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
-          <div className="flex flex-wrap gap-2 items-center">
-            <input className="input w-auto" type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} />
-            <input className="input w-auto" type="time" value={f.time} onChange={(e) => setF({ ...f, time: e.target.value })} />
-            <button className="btn" disabled={!f.title.trim() || !f.date} onClick={async () => { await api.post(`workspaces/${id}/items`, { kind: 'event', title: f.title, due_on: f.date, extra: f.time ? { time: f.time } : {} }); setF({ ...f, title: '', time: '' }); load(); }}><Plus size={14} /> Add</button>
+        <div className="flex items-center gap-2">
+          <div className="inline-flex rounded-lg border border-sky overflow-hidden text-sm">
+            {(['calendar', 'list'] as const).map((v) => <button key={v} onClick={() => setView(v)} className={`px-3 py-1.5 ${view === v ? 'bg-navy text-white' : 'text-navy hover:bg-sky/40'}`}>{v === 'calendar' ? 'Calendar' : 'List'}</button>)}
           </div>
+          <p className="text-xs text-teal hidden sm:block">Anything with a date in this job shows here.</p>
         </div>
-        <div className="card p-4"><h2 className="font-semibold mb-1">Coming up</h2>{upcoming.length === 0 ? <p className="text-sm text-teal">Nothing dated yet.</p> : upcoming.map(line)}</div>
-        {past.length > 0 && <details><summary className="text-sm text-teal cursor-pointer">Past or overdue ({past.length})</summary><div className="card p-4 mt-2">{past.map(line)}</div></details>}
+
+        {view === 'calendar' && (
+          <div className="card p-3 sm:p-4">
+            <div className="flex items-center justify-between mb-2">
+              <button className="btn-ghost" onClick={() => setMonth(addMonths(month, -1))} aria-label="Previous month"><ChevronLeft size={16} /></button>
+              <div className="font-semibold">{format(month, 'MMMM yyyy')} <button className="text-xs text-teal underline ml-2 font-normal" onClick={() => { setMonth(startOfMonth(new Date())); setPicked(today()); }}>Today</button></div>
+              <button className="btn-ghost" onClick={() => setMonth(addMonths(month, 1))} aria-label="Next month"><ChevronRight size={16} /></button>
+            </div>
+            <div className="grid grid-cols-7 text-center text-[11px] text-teal mb-1">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => <div key={d}>{d}</div>)}</div>
+            <div className="grid grid-cols-7 gap-px bg-sky/60 border border-sky/60 rounded-lg overflow-hidden">
+              {weeks.map((d) => {
+                const k = format(d, 'yyyy-MM-dd'), list = on(k);
+                return (
+                  <button key={k} onClick={() => setPicked(k)} className={`min-h-16 sm:min-h-24 p-1 text-left align-top bg-white hover:bg-beige ${isSameMonth(d, month) ? '' : 'opacity-40'} ${picked === k ? 'ring-2 ring-inset ring-navy' : ''}`}>
+                    <div className={`text-xs ${k === today() ? 'inline-flex w-5 h-5 items-center justify-center rounded-full bg-navy text-white' : 'text-teal'}`}>{format(d, 'd')}</div>
+                    <div className="space-y-0.5 mt-0.5">
+                      {list.slice(0, 2).map((i) => <div key={i.id} className={`hidden sm:block truncate rounded px-1 text-[11px] leading-4 ${TONE[i.kind] ?? 'bg-sky/50 text-navy'}`}>{i.title}</div>)}
+                      {list.length > 2 && <div className="hidden sm:block text-[11px] text-teal">+{list.length - 2} more</div>}
+                      {list.length > 0 && <div className="sm:hidden flex gap-0.5 flex-wrap">{list.slice(0, 3).map((i) => <span key={i.id} className="w-1.5 h-1.5 rounded-full bg-navy" />)}</div>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {view === 'calendar' && (
+          <div className="card p-4 space-y-3">
+            <h3 className="font-semibold">{day(picked)}</h3>
+            {on(picked).length === 0 ? <p className="text-sm text-teal">Nothing on this day.</p> : on(picked).map((i) => (
+              <div key={i.id} className="flex items-center gap-3 text-sm"><span className="w-14 text-teal shrink-0">{i.extra?.time ?? ''}</span><span className="flex-1 min-w-0 truncate">{i.title}</span><span className="text-xs text-teal">{LABEL[i.kind] ?? i.kind}</span></div>
+            ))}
+            <div className="flex flex-wrap gap-2 items-center pt-2 border-t border-sky/60">
+              <input className="input flex-1 min-w-40" placeholder="Add an event on this day" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
+              <input className="input w-auto" type="time" value={f.time} onChange={(e) => setF({ ...f, time: e.target.value })} />
+              <button className="btn" disabled={!f.title.trim()} onClick={async () => { await api.post(`workspaces/${id}/items`, { kind: 'event', title: f.title, due_on: picked, extra: f.time ? { time: f.time } : {} }); setF({ title: '', time: '' }); load(); }}><Plus size={14} /> Add</button>
+            </div>
+          </div>
+        )}
+
+        {view === 'list' && (
+          <>
+            <div className="card p-4"><h3 className="font-semibold mb-1">Coming up</h3>{upcoming.length === 0 ? <p className="text-sm text-teal">Nothing dated yet.</p> : upcoming.map(line)}</div>
+            {past.length > 0 && <details><summary className="text-sm text-teal cursor-pointer">Past or overdue ({past.length})</summary><div className="card p-4 mt-2">{past.map(line)}</div></details>}
+          </>
+        )}
       </div>
     );
   };
 
-  const secs = [...CORE, ...modules, { id: 'wrap', label: 'Wrap up' }];
+  const groups = [...GROUPS, ...(modules.length ? [{ title: JOB_TYPES[ws.job_type], secs: modules }] : []), { title: '', secs: [WRAP] }];
+  const flat = groups.flatMap((g) => g.secs);
   const spec = SPECS[sec];
-  const label = secs.find((s) => s.id === sec)?.label ?? '';
+  const label = flat.find((x) => x.id === sec)?.label ?? '';
+  const navBtn = (x: Sec) => {
+    const on = sec === x.id, Icon = x.icon;
+    return (
+      <button key={x.id} onClick={() => { setSec(x.id); setMsg(''); }} className={`w-full flex items-center gap-2.5 text-left px-3 py-2 rounded-lg text-sm whitespace-nowrap transition-colors ${on ? 'bg-navy text-white font-semibold shadow-sm' : 'text-navy hover:bg-sky/50'}`}>
+        <Icon size={16} className={on ? 'text-white' : 'text-teal'} /> {x.label}
+      </button>
+    );
+  };
 
   return (
     <div className="max-w-5xl mx-auto space-y-5">
@@ -167,15 +244,17 @@ export default function WorkspacePage() {
         {locked && <p className="text-xs text-teal mt-1">Wrapped up. Everything stays here and stays searchable.</p>}
       </div>
 
-      <div className="md:grid md:grid-cols-[220px_1fr] md:gap-6 items-start">
-        <nav className="md:sticky md:top-4 flex md:flex-col gap-1 overflow-x-auto md:overflow-visible pb-2 md:pb-0 mb-4 md:mb-0 border-b md:border-b-0 border-sky">
-          {secs.map((s, k) => (
-            <div key={s.id} className="md:w-full shrink-0">
-              {(k === CORE.length && modules.length > 0) && <div className="hidden md:block text-[11px] uppercase tracking-wide text-teal px-3 pt-3 pb-1">{JOB_TYPES[ws.job_type]}</div>}
-              {(s.id === 'wrap') && <div className="hidden md:block h-2" />}
-              <button onClick={() => { setSec(s.id); setMsg(''); }} className={`w-full text-left px-3 py-2 rounded-lg text-sm whitespace-nowrap ${sec === s.id ? 'bg-navy text-white font-semibold' : 'text-navy hover:bg-sky/40'}`}>{s.label}</button>
+      <div className="md:grid md:grid-cols-[230px_1fr] md:gap-6 items-start">
+        <nav className="hidden md:block md:sticky md:top-4 card p-2 space-y-3">
+          {groups.map((g, k) => (
+            <div key={k} className={k > 0 && !g.title ? 'pt-2 border-t border-sky/60' : ''}>
+              {g.title && <div className="text-[11px] uppercase tracking-wide text-teal px-3 pb-1">{g.title}</div>}
+              <div className="space-y-0.5">{g.secs.map(navBtn)}</div>
             </div>
           ))}
+        </nav>
+        <nav className="md:hidden flex gap-1 overflow-x-auto pb-2 mb-4 border-b border-sky">
+          {flat.map((x) => <div key={x.id} className="shrink-0">{navBtn(x)}</div>)}
         </nav>
 
         <div className="space-y-5 min-w-0">
