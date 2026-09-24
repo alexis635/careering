@@ -53,7 +53,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
   if (action === 'parse') return parseJob(job, posting);
 
   const lib = await libraryContext();
-  if (lib.empty && action !== 'outreach') throw new HttpError(400, 'Add some bullets and a resume version to the Library first');
+  if (lib.empty && !['outreach', 'follow_up', 'thank_you'].includes(action)) throw new HttpError(400, 'Add some bullets and a resume version to the Library first');
 
   // 2. Match / gap check
   if (action === 'match') {
@@ -111,18 +111,35 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
     return saveDoc(jobId, 'interview_prep', `Interview prep for ${job.company || 'job'}`, text);
   }
 
-  // 4. Cover letter or outreach email
-  if (action === 'cover_letter' || action === 'outreach') {
-    const isOutreach = action === 'outreach';
+  // 4. Emails: outreach, follow up, and thank you (all return "Subject: ..." then the body, saved as a versioned draft)
+  if (action === 'outreach' || action === 'follow_up' || action === 'thank_you') {
+    const who = body.contact_name ? `Recipient: ${body.contact_name}${body.contact_title ? `, ${body.contact_title}` : ''}\n` : '';
+    const prior = await q(`SELECT direction, subject, left(body, 700) AS body, to_char(sent_at,'Mon DD, YYYY') AS sent FROM job_emails WHERE job_id=$1 ORDER BY sent_at DESC LIMIT 6`, [jobId]);
+    const history = prior.length ? `EMAIL HISTORY ON THIS JOB (newest first):\n${prior.map((e: any) => `[${e.direction} ${e.sent}] ${e.subject}\n${e.body}`).join('\n---\n')}\n\n` : '';
+    const SIGN = ' End with a plain sign off ("Best," then the candidate\'s full name from the CAREER FACTS). Never use a placeholder like [Your Name].';
+    const prompts: Record<string, string> = {
+      outreach: 'Write a short outreach email (under 130 words) to a hiring manager or recruiter. First line: "Subject: ...". Open with a specific reason for reaching out, give one or two relevant proof points from the candidate material, and end with a low-pressure ask. Sound like a person, not a template.' + SIGN,
+      follow_up: 'Write a short follow up email (under 110 words). First line: "Subject: ...". Refer briefly to the earlier message shown in the email history (when it was sent), add ONE new piece of value or a fresh reason to reply, and make a gentle, specific ask. Do not repeat the whole first pitch. If the history shows a reply, respond to what they said instead. Sound like a person, not a template.' + SIGN,
+      thank_you: 'Write a brief thank you email after an interview (under 120 words). First line: "Subject: ...". Thank them, mention one specific topic that came up or that fits the role (use the interview notes if given, otherwise the posting), restate in one sentence why the candidate is a strong fit using real material, and note the next step. Do not claim anything was said in the interview unless it appears in the interview notes. Describe the role as the posting describes it (for example "the role\'s focus on ..."), never as something they told the candidate.' + SIGN,
+    };
     const text = await ask(
-      isOutreach
-        ? 'Write a short outreach email (under 130 words) to a hiring manager or recruiter. First line: "Subject: ...". Open with a specific reason for reaching out, give one or two relevant proof points from the candidate material, and end with a low-pressure ask. Sound like a person, not a template.'
-        : 'Write a cover letter as a finished document. Line 1: the candidate\'s full name. Line 2: contact line (email · phone), both from the CAREER FACTS or base resume, never a location. Then a blank line, then the letter: a greeting ("Dear Hiring Team," if no name is known), 3 short paragraphs totalling 250 to 330 words, and a closing "Sincerely," on its own line followed by the candidate\'s name. ' +
-          'Open with a specific hook about the company or role, connect two or three real accomplishments from the candidate material to the posting\'s top needs, close briefly. No "I am writing to apply" opener. Plain paragraphs only, separated by blank lines.',
-      `${jobHeader(job)}\n${isOutreach && body.contact_name ? `Recipient: ${body.contact_name}${body.contact_title ? `, ${body.contact_title}` : ''}\n` : ''}\nJOB POSTING:\n${posting}\n\nCANDIDATE MATERIAL:\n${lib.text}${body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''}`,
+      prompts[action],
+      `${jobHeader(job)}\n${who}\nJOB POSTING:\n${posting}\n\n${history}${job.interview_prep ? `INTERVIEW NOTES:\n${job.interview_prep}\n\n` : ''}CANDIDATE MATERIAL:\n${lib.text}${body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''}`,
       6000,
     );
-    return saveDoc(jobId, isOutreach ? 'outreach' : 'cover_letter', `${isOutreach ? 'Outreach email' : 'Cover letter'} for ${job.company || 'job'}`, text);
+    const label = action === 'outreach' ? 'Outreach email' : action === 'follow_up' ? 'Follow up email' : 'Thank you email';
+    return saveDoc(jobId, 'outreach', `${label} for ${job.company || 'job'}`, text);
+  }
+
+  // 5. Cover letter
+  if (action === 'cover_letter') {
+    const text = await ask(
+      'Write a cover letter as a finished document. Line 1: the candidate\'s full name. Line 2: contact line (email · phone), both from the CAREER FACTS or base resume, never a location. Then a blank line, then the letter: a greeting ("Dear Hiring Team," if no name is known), 3 short paragraphs totalling 250 to 330 words, and a closing "Sincerely," on its own line followed by the candidate\'s name. ' +
+        'Open with a specific hook about the company or role, connect two or three real accomplishments from the candidate material to the posting\'s top needs, close briefly. No "I am writing to apply" opener. Plain paragraphs only, separated by blank lines.',
+      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nCANDIDATE MATERIAL:\n${lib.text}${body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''}`,
+      6000,
+    );
+    return saveDoc(jobId, 'cover_letter', `Cover letter for ${job.company || 'job'}`, text);
   }
 
   throw new HttpError(404, 'Unknown AI action');

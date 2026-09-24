@@ -52,6 +52,9 @@ export default function JobDetail() {
   const [gmail, setGmail] = useState<{ connected: boolean; email: string | null } | null>(null);
   const [compose, setCompose] = useState({ to: '', subject: '', body: '' });
   const [mailMsg, setMailMsg] = useState('');
+  const [draftKind, setDraftKind] = useState<'outreach' | 'follow_up' | 'thank_you'>('outreach');
+  const [draftContact, setDraftContact] = useState('');
+  const [mailInstr, setMailInstr] = useState('');
   type Att = { name: string; mime: string; data: string };
   const [atts, setAtts] = useState<Att[]>([]);
   const [portfolio, setPortfolio] = useState('');
@@ -79,10 +82,21 @@ export default function JobDetail() {
   }, []);
 
   if (!job) return null;
-  function useInEmail(d: JobDoc) {
+  function useInEmail(d: JobDoc, toEmail?: string) {
     const m = d.body.match(/^Subject:\s*(.+)\n+/i);
-    setCompose({ to: contacts.find((c) => c.email)?.email ?? '', subject: m ? m[1].trim() : '', body: (m ? d.body.slice(m[0].length) : d.body).trim() });
+    setCompose({ to: toEmail || contacts.find((c) => c.email)?.email || '', subject: m ? m[1].trim() : '', body: (m ? d.body.slice(m[0].length) : d.body).trim() });
     setMailMsg(''); setTab('Emails');
+  }
+  /** Generate an email right where you compose it: fills To, Subject, and the body, and keeps a versioned copy under Documents. */
+  async function draftEmail(kind: 'outreach' | 'follow_up' | 'thank_you', contact?: JobContact) {
+    const c = contact ?? contacts.find((x) => x.id === Number(draftContact));
+    setBusy('draft'); setAiErr(''); setMailMsg('');
+    try {
+      const doc = await api.post<JobDoc>(`ai/${kind}`, { job_id: Number(id), instructions: mailInstr, contact_name: c?.name, contact_title: c?.title });
+      loadKids();
+      useInEmail(doc, c?.email);
+      setMailMsg('Draft ready. Edit anything you like, then send.');
+    } catch (e: any) { setMailMsg(e.message); } finally { setBusy(null); }
   }
   async function attachFromDoc(value: string) {
     if (!value) return;
@@ -225,8 +239,8 @@ export default function JobDetail() {
                 {c.notes && <div className="text-xs text-teal mt-0.5">{c.notes}</div>}
               </div>
               {!logistics && (
-                <button className="btn" disabled={!!busy} onClick={() => ai('outreach', { instructions, contact_name: c.name, contact_title: c.title })}>
-                  <Mail size={14} /> {busy === 'outreach' ? 'Writing…' : 'Draft outreach'}
+                <button className="btn" disabled={!!busy} onClick={() => draftEmail('outreach', c)}>
+                  <Mail size={14} /> {busy === 'draft' ? 'Writing…' : 'Draft outreach'}
                 </button>
               )}
               <button className="text-teal hover:text-navy" onClick={async () => { await api.del(`jobs/${id}/contacts/${c.id}`); loadKids(); }}><Trash2 size={15} /></button>
@@ -246,6 +260,24 @@ export default function JobDetail() {
           {gmail?.connected && (
             <form className="card p-4 space-y-3" onSubmit={(e) => { e.preventDefault(); sendMail(); }}>
               <div className="text-xs text-teal">Sending from {gmail.email}</div>
+              {!logistics && (
+                <div className="rounded-lg bg-beige p-3 space-y-2.5">
+                  <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-teal"><Sparkles size={13} /> Write it for me</div>
+                  <div className="flex flex-wrap gap-2">
+                    <select className="input w-auto text-sm" value={draftKind} onChange={(e) => setDraftKind(e.target.value as typeof draftKind)}>
+                      <option value="outreach">First outreach</option>
+                      <option value="follow_up">Follow up</option>
+                      <option value="thank_you">Thank you after an interview</option>
+                    </select>
+                    <select className="input w-auto text-sm" value={draftContact} onChange={(e) => setDraftContact(e.target.value)}>
+                      <option value="">{contacts.length ? 'To: choose a contact (optional)' : 'No contacts yet'}</option>
+                      {contacts.map((c) => <option key={c.id} value={c.id}>{c.name || c.email}{c.title ? `, ${c.title}` : ''}</option>)}
+                    </select>
+                    <button type="button" className="btn" disabled={!!busy} onClick={() => draftEmail(draftKind)}><Sparkles size={14} /> {busy === 'draft' ? 'Writing…' : 'Generate email'}</button>
+                  </div>
+                  <input className="input text-sm" placeholder="Optional: anything to include, like a detail about them or a tone (warmer, shorter)" value={mailInstr} onChange={(e) => setMailInstr(e.target.value)} />
+                </div>
+              )}
               <input className="input" type="email" required placeholder="To" value={compose.to} onChange={(e) => setCompose({ ...compose, to: e.target.value })} />
               <input className="input" required placeholder="Subject" value={compose.subject} onChange={(e) => setCompose({ ...compose, subject: e.target.value })} />
               <textarea className="input" rows={9} required placeholder="Write here, or open an outreach draft under Documents and click Use in email." value={compose.body} onChange={(e) => setCompose({ ...compose, body: e.target.value })} />
