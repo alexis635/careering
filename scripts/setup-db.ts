@@ -168,6 +168,12 @@ const statements = [
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at TIMESTAMPTZ
   )`,
+  `ALTER TABLE job_notes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
+  `ALTER TABLE job_documents ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
+  `ALTER TABLE job_actions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
+  `ALTER TABLE job_contacts ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
+  `ALTER TABLE library_items ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
+  `ALTER TABLE career_docs ADD COLUMN IF NOT EXISTS win_id INT`,
   `CREATE INDEX IF NOT EXISTS jobs_lane_idx ON jobs(lane_id)`,
   `CREATE INDEX IF NOT EXISTS job_emails_thread_idx ON job_emails(gmail_thread_id)`,
 ];

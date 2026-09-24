@@ -55,6 +55,7 @@ function CompForm({ onSave, onCancel, busy, err }: { onSave: (v: any) => void; o
 export default function RolesPay() {
   const [roles, setRoles] = useState<Role[] | null>(null);
   const [gone, setGone] = useState<Role[]>([]);
+  const [goneComp, setGoneComp] = useState<(CompEntry & { employer: string; role_title: string })[]>([]);
   const [show, setShow] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
@@ -63,7 +64,7 @@ export default function RolesPay() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
-  const load = () => { api.get<Role[]>('roles').then(setRoles); api.get<Role[]>('roles?deleted=1').then(setGone); };
+  const load = () => { api.get<Role[]>('roles').then(setRoles); api.get<Role[]>('roles?deleted=1').then(setGone); api.get<any[]>('comp').then(setGoneComp).catch(() => {}); };
   useEffect(load, []);
 
   // every pay figure across your career, oldest first, so each change can be compared with the one before it
@@ -141,12 +142,14 @@ export default function RolesPay() {
         {roles && roles.length === 0 && <p className="text-sm text-teal text-center">No roles yet. Add your current one to start.</p>}
       </div>
 
-      {gone.length > 0 && (
+      {gone.length + goneComp.length > 0 && (
         <div className="text-center">
-          <button className="text-sm text-teal underline" onClick={() => setShowGone((v) => !v)}>{showGone ? 'Hide' : 'Show'} recently deleted ({gone.length})</button>
+          <button className="text-sm text-teal underline" onClick={() => setShowGone((v) => !v)}>{showGone ? 'Hide' : 'Show'} recently deleted ({gone.length + goneComp.length})</button>
           {showGone && <div className="card divide-y divide-sky/60 mt-2 text-left">
             {gone.map((r) => <div key={r.id} className="flex items-center gap-3 px-4 py-2.5 text-sm"><span>{r.title}, {r.employer}</span>
               <button className="btn-ghost ml-auto" onClick={async () => { await api.post(`roles/${r.id}/restore`); load(); }}><RotateCcw size={13} /> Restore</button></div>)}
+            {goneComp.map((c) => <div key={`c${c.id}`} className="flex items-center gap-3 px-4 py-2.5 text-sm"><span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-sky text-navy">Pay entry</span><span>{c.employer}, {KINDS[c.kind] ?? c.kind}{c.effective_on ? `, ${format(parseISO(c.effective_on), 'MMM yyyy')}` : ''}, {c.amount == null ? 'no amount' : show ? money(c.amount) : mask}</span>
+              <button className="btn-ghost ml-auto" onClick={async () => { await api.post(`comp/${c.id}/restore`); load(); }}><RotateCcw size={13} /> Restore</button></div>)}
           </div>}
         </div>
       )}

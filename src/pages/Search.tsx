@@ -39,7 +39,7 @@ export default function Search() {
       {hits && hits.length === 0 && q.trim().length >= 2 && <p className="text-teal text-sm">No matches.</p>}
       <div className="space-y-2">
         {hits?.map((h, i) => (
-          <Link key={i} to={h.job_id ? `/jobs/${h.job_id}` : '/library'} className="card p-3.5 block hover:shadow-md transition-shadow">
+          <Link key={i} to={h.job_id ? `/jobs/${h.job_id}` : (h.href ?? '/library')} className="card p-3.5 block hover:shadow-md transition-shadow">
             <div className="flex items-center gap-2 text-xs text-teal mb-0.5">
               <span className="uppercase tracking-wide font-semibold">{h.type}</span><span>{h.label}</span>
             </div>

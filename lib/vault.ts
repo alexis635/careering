@@ -3,11 +3,11 @@ import { HttpError, ask } from './ai.js';
 
 const DOC_MIME = /^(application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|text\/plain|image\/(png|jpeg))$/;
 const MAX_BYTES = 3_000_000;   // JSON upload limit on the host is 4.5 MB, and base64 adds a third
-const DOC_CATEGORIES = ['education', 'certification', 'employment', 'reference', 'other'];
+const DOC_CATEGORIES = ['education', 'certification', 'employment', 'reference', 'other', 'proof'];
 const WIN_CATEGORIES = ['revenue', 'leadership', 'recognition', 'project', 'growth'];
 
 // Files are stored in the database and only ever returned through the signed-in file endpoint. They have no public URL.
-const DOC_COLS = `id, title, category, issuer, notes, to_char(expires_on,'YYYY-MM-DD') AS expires_on, file_name, mime, size, created_at, updated_at, deleted_at`;
+const DOC_COLS = `id, win_id, title, category, issuer, notes, to_char(expires_on,'YYYY-MM-DD') AS expires_on, file_name, mime, size, created_at, updated_at, deleted_at`;
 const WIN_COLS = `id, title, to_char(happened_on,'YYYY-MM-DD') AS happened_on, employer, role, description, impact, category, proof_url, bullet_id, created_at, updated_at`;
 
 type FileIn = { name: string; mime: string; data: string } | null | undefined;
@@ -23,17 +23,20 @@ const cat = (v: any, list: string[], fallback: string) => (list.includes(v) ? v 
 const dateOrNull = (v: any) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
 
 // ---------------- career documents ----------------
+// Proof files attached to a win are hidden from the Vault list, but they still show in Recently deleted so a removed one can always be restored.
 export const listDocs = (deleted: boolean) =>
-  q(`SELECT ${DOC_COLS} FROM career_docs WHERE deleted_at IS ${deleted ? 'NOT NULL' : 'NULL'} ORDER BY category, lower(title)`);
+  q(`SELECT ${DOC_COLS} FROM career_docs WHERE deleted_at IS ${deleted ? 'NOT NULL' : 'NULL AND win_id IS NULL'} ORDER BY category, lower(title)`);
+export const listWinFiles = (winId: number) =>
+  q(`SELECT ${DOC_COLS} FROM career_docs WHERE win_id=$1 AND deleted_at IS NULL ORDER BY created_at`, [winId]);
 
 export async function createDoc(b: any) {
   if (!String(b.title || '').trim()) throw new HttpError(400, 'Give the document a title');
   const f = checkFile(b.file);
   return (
     await q(
-      `INSERT INTO career_docs (title, category, issuer, notes, expires_on, file_name, mime, size, file_data)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8, CASE WHEN $9::text IS NULL THEN NULL ELSE decode($9::text,'base64') END) RETURNING ${DOC_COLS}`,
-      [String(b.title).trim(), cat(b.category, DOC_CATEGORIES, 'other'), b.issuer ?? '', b.notes ?? '', dateOrNull(b.expires_on), f?.name ?? null, f?.mime ?? null, f?.size ?? null, f?.data ?? null],
+      `INSERT INTO career_docs (title, category, issuer, notes, expires_on, file_name, mime, size, file_data, win_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8, CASE WHEN $9::text IS NULL THEN NULL ELSE decode($9::text,'base64') END, $10) RETURNING ${DOC_COLS}`,
+      [String(b.title).trim(), cat(b.category, DOC_CATEGORIES, 'other'), b.issuer ?? '', b.notes ?? '', dateOrNull(b.expires_on), f?.name ?? null, f?.mime ?? null, f?.size ?? null, f?.data ?? null, b.win_id ?? null],
     )
   )[0];
 }
@@ -65,7 +68,15 @@ export async function getDocFile(id: number) {
 
 // ---------------- wins ----------------
 export const listWins = (deleted: boolean) =>
-  q(`SELECT ${WIN_COLS}, deleted_at FROM wins WHERE deleted_at IS ${deleted ? 'NOT NULL' : 'NULL'} ORDER BY happened_on DESC NULLS LAST, id DESC`);
+  q(`SELECT ${WIN_COLS}, deleted_at, (SELECT count(*)::int FROM career_docs f WHERE f.win_id = wins.id AND f.deleted_at IS NULL) AS file_count
+       FROM wins WHERE deleted_at IS ${deleted ? 'NOT NULL' : 'NULL'} ORDER BY happened_on DESC NULLS LAST, id DESC`);
+
+export async function addWinFile(winId: number, b: any) {
+  const win = (await q(`SELECT title FROM wins WHERE id=$1 AND deleted_at IS NULL`, [winId]))[0];
+  if (!win) throw new HttpError(404, 'Win not found');
+  if (!b.file) throw new HttpError(400, 'Choose a file to attach');
+  return createDoc({ title: String(b.title || b.file.name || 'Proof').slice(0, 120), category: 'proof', notes: `Proof for the win: ${win.title}`, win_id: winId, file: b.file });
+}
 
 export async function createWin(b: any) {
   if (!String(b.title || '').trim()) throw new HttpError(400, 'Give the win a short title');

@@ -26,7 +26,7 @@ export interface Attention {
   actions: { id: number; text: string; due_date: string; job_id: number; company: string; role_title: string }[];
   credentials?: { id: number; title: string; category: string; expires_on: string }[];
 }
-export interface SearchHit { type: string; id: number; job_id: number | null; label: string; title: string; snippet: string }
+export interface SearchHit { type: string; id: number; job_id: number | null; href?: string; label: string; title: string; snippet: string }
 export interface LibItem { id: number; kind: 'bullet' | 'resume' | 'bio' | 'snippet'; title: string; body: string; tags: string[] }
 export interface JobContact { id: number; name: string; title: string; email: string; source: string; notes: string }
 export interface JobEmail { attachments?: string[]; id: number; direction: 'sent' | 'received'; from_addr: string; to_addr: string; subject: string; body: string; sent_at: string; gmail_thread_id: string | null }
@@ -43,7 +43,7 @@ export interface WeeklyData {
   stale: Attention['stale'];
   actions: Attention['actions'];
 }
-export interface VaultDoc { id: number; title: string; category: string; issuer: string; notes: string; expires_on: string | null; file_name: string | null; mime: string | null; size: number | null; created_at: string; deleted_at?: string | null }
-export interface Win { id: number; title: string; happened_on: string | null; employer: string; role: string; description: string; impact: string; category: string; proof_url: string; bullet_id: number | null; deleted_at?: string | null }
+export interface VaultDoc { win_id?: number | null; id: number; title: string; category: string; issuer: string; notes: string; expires_on: string | null; file_name: string | null; mime: string | null; size: number | null; created_at: string; deleted_at?: string | null }
+export interface Win { id: number; title: string; happened_on: string | null; employer: string; role: string; description: string; impact: string; category: string; proof_url: string; bullet_id: number | null; file_count?: number; deleted_at?: string | null }
 export interface CompEntry { id: number; role_id: number; effective_on: string | null; kind: string; amount: number | null; note: string }
 export interface Role { id: number; employer: string; title: string; start_date: string | null; end_date: string | null; approx: boolean; notes: string; job_id: number | null; comp: CompEntry[]; deleted_at?: string | null }

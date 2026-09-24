@@ -141,6 +141,12 @@ export async function route(c: Ctx): Promise<Result> {
       return { json: job };
     }
     // job children: documents, notes, actions, contacts, emails
+    // everything deleted from this job (documents, notes, next actions, contacts), so it can be restored
+    if (b && c2 === 'deleted' && c.method === 'GET') {
+      const gone = (t: string) => q(`SELECT * FROM ${t} WHERE job_id=$1 AND deleted_at IS NOT NULL ORDER BY deleted_at DESC`, [id]);
+      const [documents, notes, actions, contacts] = await Promise.all([gone('job_documents'), gone('job_notes'), gone('job_actions'), gone('job_contacts')]);
+      return { json: { documents, notes, actions, contacts } };
+    }
     const kids: Record<string, string> = {
       documents: 'job_documents', notes: 'job_notes', actions: 'job_actions',
       contacts: 'job_contacts', emails: 'job_emails',
@@ -150,7 +156,7 @@ export async function route(c: Ctx): Promise<Result> {
       if (!d && c.method === 'GET') {
         const order = table === 'job_actions' ? 'done, id' : 'created_at DESC';
         const col = table === 'job_emails' ? 'sent_at DESC' : order;
-        return { json: await q(`SELECT * FROM ${table} WHERE job_id=$1 ORDER BY ${col}`, [id]) };
+        return { json: await q(`SELECT * FROM ${table} WHERE job_id=$1 ${table === 'job_emails' ? '' : 'AND deleted_at IS NULL'} ORDER BY ${col}`, [id]) };
       }
       if (!d && c.method === 'POST') {
         const allowed: Record<string, string[]> = {
@@ -171,11 +177,16 @@ export async function route(c: Ctx): Promise<Result> {
         const s = buildInsert(table, ['job_id', ...allowed[table], ...(table === 'job_documents' ? ['version'] : [])], body);
         return { json: (await q(s.text, s.vals))[0] };
       }
+      if (d && c.parts[4] === 'restore' && c.method === 'POST' && table !== 'job_emails') {
+        return { json: (await q(`UPDATE ${table} SET deleted_at = NULL WHERE id=$1 AND job_id=$2 RETURNING *`, [Number(d), id]))[0] };
+      }
       if (d && (c.method === 'PATCH' || c.method === 'DELETE')) {
         const rid = Number(d);
         if (c.method === 'DELETE') {
-          await q(`DELETE FROM ${table} WHERE id=$1 AND job_id=$2`, [rid, id]);
-          return { json: { ok: true } };
+          // never destroyed: the item goes to Recently deleted on the job and can be restored
+          if (table === 'job_emails') return { status: 400, json: { error: 'Emails are a record of what was sent and cannot be deleted' } };
+          await q(`UPDATE ${table} SET deleted_at = now() WHERE id=$1 AND job_id=$2`, [rid, id]);
+          return { json: { ok: true, trashed: true } };
         }
         if (table === 'job_actions') {
           const s = buildUpdate(table, ['text', 'done', 'due_date'], rid, c.body);
@@ -204,6 +215,8 @@ export async function route(c: Ctx): Promise<Result> {
   if (a === 'wins') {
     if (!b && c.method === 'GET') return { json: await vault.listWins(c.query.get('deleted') === '1') };
     if (!b && c.method === 'POST') return { json: await vault.createWin(c.body) };
+    if (b && c2 === 'files' && c.method === 'GET') return { json: await vault.listWinFiles(id) };
+    if (b && c2 === 'files' && c.method === 'POST') return { json: await vault.addWinFile(id, c.body) };
     if (b && c2 === 'bullet-draft' && c.method === 'POST') return { json: await vault.winBulletDraft(id) };
     if (b && c2 === 'restore' && c.method === 'POST') return { json: (await vault.restoreWin(id))[0] };
     if (b && !c2 && c.method === 'PATCH') return { json: await vault.updateWin(id, c.body) };
@@ -225,6 +238,7 @@ export async function route(c: Ctx): Promise<Result> {
     if (b && !c2 && c.method === 'PATCH') return { json: await roles.updateRole(id, c.body) };
     if (b && !c2 && c.method === 'DELETE') { await roles.trashRole(id); return { json: { ok: true, trashed: true } }; }
   }
+  if (a === 'comp' && !b && c.method === 'GET') return { json: await roles.listDeletedComp() };
   if (a === 'comp' && b) {
     if (c2 === 'restore' && c.method === 'POST') return { json: await roles.restoreComp(id) };
     if (!c2 && c.method === 'PATCH') return { json: await roles.updateComp(id, c.body) };
@@ -277,8 +291,8 @@ export async function route(c: Ctx): Promise<Result> {
       const kind = c.query.get('kind');
       return {
         json: kind
-          ? await q(`SELECT * FROM library_items WHERE kind=$1 ORDER BY updated_at DESC`, [kind])
-          : await q(`SELECT * FROM library_items ORDER BY kind, updated_at DESC`),
+          ? await q(`SELECT * FROM library_items WHERE kind=$1 AND deleted_at IS ${c.query.get('deleted') === '1' ? 'NOT NULL' : 'NULL'} ORDER BY updated_at DESC`, [kind])
+          : await q(`SELECT * FROM library_items WHERE deleted_at IS ${c.query.get('deleted') === '1' ? 'NOT NULL' : 'NULL'} ORDER BY kind, updated_at DESC`),
       };
     }
     if (!b && c.method === 'POST') {
@@ -289,8 +303,9 @@ export async function route(c: Ctx): Promise<Result> {
       const s = buildUpdate('library_items', LIB_FIELDS, id, c.body, true);
       return { json: s ? (await q(s.text, s.vals))[0] : null };
     }
+    if (b && c2 === 'restore' && c.method === 'POST') return { json: (await q(`UPDATE library_items SET deleted_at = NULL WHERE id=$1 RETURNING *`, [id]))[0] };
     if (b && c.method === 'DELETE') {
-      await q(`DELETE FROM library_items WHERE id=$1`, [id]);
+      await q(`UPDATE library_items SET deleted_at = now() WHERE id=$1`, [id]);   // never destroyed
       return { json: { ok: true } };
     }
   }

@@ -16,7 +16,7 @@ export async function exportAll() {
     t('job_emails', `SELECT * FROM job_emails ORDER BY id`),
     t('library_items', `SELECT * FROM library_items ORDER BY id`),
     t('wins', `SELECT * FROM wins ORDER BY id`),
-    t('career_docs', `SELECT id, title, category, issuer, notes, expires_on, file_name, mime, size, created_at, updated_at, deleted_at FROM career_docs ORDER BY id`),
+    t('career_docs', `SELECT id, win_id, title, category, issuer, notes, expires_on, file_name, mime, size, created_at, updated_at, deleted_at FROM career_docs ORDER BY id`),
     t('career_cases', `SELECT * FROM career_cases ORDER BY id`),
     t('roles', `SELECT * FROM roles ORDER BY id`),
     t('comp_entries', `SELECT id, role_id, effective_on, kind, amount::float8 AS amount, note, created_at, deleted_at FROM comp_entries ORDER BY id`),

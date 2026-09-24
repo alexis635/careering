@@ -1,13 +1,46 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
-import { ExternalLink, Plus, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
+import { ExternalLink, Paperclip, Plus, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '../api';
-import type { LibItem, Win } from '../types';
+import { MAX_UPLOAD, kb, readFile } from '../lib/files';
+import type { LibItem, VaultDoc, Win } from '../types';
 
 const CATS: Record<string, string> = { revenue: 'Revenue and growth', leadership: 'Leadership', recognition: 'Recognition', project: 'Project or launch', growth: 'Skills and growth' };
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const when = (d: string | null) => (d ? format(parseISO(d), 'MMM yyyy') : 'No date yet');
+
+function ProofFiles({ win, onChange }: { win: Win; onChange: () => void }) {
+  const [files, setFiles] = useState<VaultDoc[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const load = () => api.get<VaultDoc[]>(`wins/${win.id}/files`).then(setFiles).catch(() => {});
+  useEffect(() => { if ((win.file_count ?? 0) > 0) load(); else setFiles([]); }, [win.id, win.file_count]);
+  async function attach(f: File | undefined) {
+    if (!f) return;
+    if (f.size > MAX_UPLOAD) { setErr('That file is over 3 MB. Try a smaller scan or a compressed PDF.'); return; }
+    setBusy(true); setErr('');
+    try { await api.post(`wins/${win.id}/files`, { file: await readFile(f) }); await load(); onChange(); }
+    catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  }
+  return (
+    <div className="pt-1 space-y-1">
+      {files.map((f) => (
+        <div key={f.id} className="flex items-center gap-2 text-xs">
+          <Paperclip size={11} className="text-teal shrink-0" />
+          <a className="underline text-teal truncate" href={`/api/vault/docs/${f.id}/file`}>{f.file_name}</a>
+          <span className="text-teal">{kb(f.size)}</span>
+          <button className="ml-auto text-teal hover:text-navy" title="Remove (you can restore it from Vault, Recently deleted)" onClick={async () => { await api.del(`vault/docs/${f.id}`); await load(); onChange(); }}><Trash2 size={12} /></button>
+        </div>
+      ))}
+      <label className="text-xs text-teal underline cursor-pointer inline-flex items-center gap-1">
+        <Paperclip size={11} /> {busy ? 'Attaching…' : 'Attach a proof file'}
+        <input type="file" className="hidden" accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" onChange={(e) => { attach(e.target.files?.[0]); e.target.value = ''; }} />
+      </label>
+      {err && <p className="text-xs text-red-700">{err}</p>}
+    </div>
+  );
+}
 
 function WinForm({ initial, employers, onSave, onCancel, busy, err }: { initial?: Win; employers: string[]; onSave: (v: any) => void; onCancel: () => void; busy: boolean; err: string }) {
   const [v, setV] = useState({ title: initial?.title ?? '', happened_on: initial?.happened_on ?? '', employer: initial?.employer ?? '', role: initial?.role ?? '', description: initial?.description ?? '', impact: initial?.impact ?? '', category: initial?.category ?? 'project', proof_url: initial?.proof_url ?? '' });
@@ -107,6 +140,7 @@ export default function Wins() {
             {w.description && <p className="text-sm">{w.description}</p>}
             {w.impact && <p className="text-sm"><span className="font-semibold">Result:</span> {w.impact}</p>}
             {w.proof_url && <a className="text-xs text-teal underline inline-flex items-center gap-1" href={w.proof_url} target="_blank" rel="noreferrer"><ExternalLink size={11} /> Proof</a>}
+            <ProofFiles win={w} onChange={load} />
 
             {bullet?.id === w.id ? (
               <div className="rounded-lg bg-beige p-3 space-y-2 mt-2">

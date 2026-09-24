@@ -49,6 +49,8 @@ export default function JobDetail() {
   const [contacts, setContacts] = useState<JobContact[]>([]);
   const [newContact, setNewContact] = useState({ name: '', title: '', email: '', notes: '' });
   const [emails, setEmails] = useState<JobEmail[]>([]);
+  const [gone, setGone] = useState<{ documents: JobDoc[]; notes: JobNote[]; actions: JobAction[]; contacts: JobContact[] } | null>(null);
+  const [showGone, setShowGone] = useState(false);
   const [gmail, setGmail] = useState<{ connected: boolean; email: string | null } | null>(null);
   const [compose, setCompose] = useState({ to: '', subject: '', body: '' });
   const [mailMsg, setMailMsg] = useState('');
@@ -73,6 +75,7 @@ export default function JobDetail() {
     api.get<JobContact[]>(`jobs/${id}/contacts`).then(setContacts);
     api.get<JobEmail[]>(`jobs/${id}/emails`).then(setEmails);
     api.get<JobAction[]>(`jobs/${id}/actions`).then(setActions);
+    api.get<{ documents: JobDoc[]; notes: JobNote[]; actions: JobAction[]; contacts: JobContact[] }>(`jobs/${id}/deleted`).then(setGone).catch(() => {});
   };
   useEffect(() => { api.get<{ connected: boolean; email: string | null }>('gmail/status').then(setGmail).catch(() => setGmail({ connected: false, email: null })); }, []);
   useEffect(() => { api.get<Job>(`jobs/${id}`).then(setJob); loadKids(); }, [id]);
@@ -476,6 +479,32 @@ export default function JobDetail() {
           </ul>
         </div>
       )}
+
+      {gone && (() => {
+        const rows: { kind: string; id: number; label: string; what: string }[] = [
+          ...gone.documents.map((d) => ({ kind: 'documents', id: d.id, what: 'Document', label: `${d.title} (${d.kind.replace('_', ' ')} v${d.version})` })),
+          ...gone.notes.map((n) => ({ kind: 'notes', id: n.id, what: 'Note', label: n.body.slice(0, 80) })),
+          ...gone.actions.map((a) => ({ kind: 'actions', id: a.id, what: 'Next action', label: a.text })),
+          ...gone.contacts.map((c) => ({ kind: 'contacts', id: c.id, what: 'Contact', label: c.name || c.email || 'Contact' })),
+        ];
+        if (!rows.length) return null;
+        return (
+          <div className="mt-10 text-center">
+            <button className="text-sm text-teal underline" onClick={() => setShowGone((v) => !v)}>{showGone ? 'Hide' : 'Show'} recently deleted ({rows.length})</button>
+            {showGone && (
+              <div className="card divide-y divide-sky/60 mt-2 text-left">
+                {rows.map((r) => (
+                  <div key={`${r.kind}${r.id}`} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                    <span className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 bg-sky text-navy shrink-0">{r.what}</span>
+                    <span className="truncate">{r.label}</span>
+                    <button className="btn-ghost ml-auto shrink-0" onClick={async () => { await api.post(`jobs/${id}/${r.kind}/${r.id}/restore`); loadKids(); }}>Restore</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

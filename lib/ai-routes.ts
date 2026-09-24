@@ -96,7 +96,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
 
   // 3b. Interview prep sheet
   if (action === 'prep') {
-    const sent = await q(`SELECT kind, title, left(body, 2500) AS body FROM job_documents WHERE job_id=$1 AND kind IN ('resume','cover_letter') ORDER BY created_at DESC LIMIT 2`, [jobId]);
+    const sent = await q(`SELECT kind, title, left(body, 2500) AS body FROM job_documents WHERE job_id=$1 AND deleted_at IS NULL AND kind IN ('resume','cover_letter') ORDER BY created_at DESC LIMIT 2`, [jobId]);
     const text = await ask(
       'Prepare the candidate for an interview with this employer. Write an interview prep sheet in EXACTLY this plain-text layout, nothing else (no code fences, no intro):\n' +
         '## LIKELY QUESTIONS\n' +
@@ -157,10 +157,10 @@ async function askRoute(body: Body & { q?: string }) {
   if (body.job_id) {
     const job = await loadJob(Number(body.job_id));
     const [docs, notes, actions, contacts, emails] = await Promise.all([
-      q(`SELECT kind, title, left(body, 1800) AS body FROM job_documents WHERE job_id=$1 ORDER BY created_at DESC LIMIT 6`, [job.id]),
-      q(`SELECT body, created_at FROM job_notes WHERE job_id=$1 ORDER BY created_at DESC LIMIT 15`, [job.id]),
-      q(`SELECT text, done FROM job_actions WHERE job_id=$1`, [job.id]),
-      q(`SELECT name, title, email, notes FROM job_contacts WHERE job_id=$1`, [job.id]),
+      q(`SELECT kind, title, left(body, 1800) AS body FROM job_documents WHERE job_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 6`, [job.id]),
+      q(`SELECT body, created_at FROM job_notes WHERE job_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 15`, [job.id]),
+      q(`SELECT text, done FROM job_actions WHERE job_id=$1 AND deleted_at IS NULL`, [job.id]),
+      q(`SELECT name, title, email, notes FROM job_contacts WHERE job_id=$1 AND deleted_at IS NULL`, [job.id]),
       q(`SELECT direction, from_addr, to_addr, subject, left(body, 800) AS body, sent_at FROM job_emails WHERE job_id=$1 ORDER BY sent_at DESC LIMIT 10`, [job.id]),
     ]);
     parts.push(`CURRENT JOB\n${JSON.stringify({ ...job, posting_text: String(job.posting_text).slice(0, 6000), posting_parsed: undefined })}\nDOCUMENTS: ${JSON.stringify(docs)}\nNOTES: ${JSON.stringify(notes)}\nNEXT ACTIONS: ${JSON.stringify(actions)}\nCONTACTS: ${JSON.stringify(contacts)}\nEMAILS: ${JSON.stringify(emails)}`);
@@ -195,7 +195,7 @@ async function resumeRoute(body: { request?: string; feedback?: string; item_id?
   if (!prev && !request) throw new HttpError(400, 'Describe the resume you need first');
   if (prev && !feedback) throw new HttpError(400, 'Say what to change first');
 
-  const base = body.base_id ? (await q(`SELECT title, body FROM library_items WHERE id=$1 AND kind='resume'`, [body.base_id]))[0] : null;
+  const base = body.base_id ? (await q(`SELECT title, body FROM library_items WHERE id=$1 AND kind='resume' AND deleted_at IS NULL`, [body.base_id]))[0] : null;
   const text = await ask(
     prev ? `${RESUME_FORMAT}\n\nRevise the CURRENT RESUME below according to the feedback. Change only what the feedback asks for, and keep the same layout.` : RESUME_FORMAT,
     prev

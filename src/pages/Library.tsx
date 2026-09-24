@@ -39,8 +39,13 @@ export default function Library() {
   const [items, setItems] = useState<LibItem[]>([]);
   const [filter, setFilter] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [gone, setGone] = useState<LibItem[]>([]);
+  const [showGone, setShowGone] = useState(false);
 
-  const load = () => api.get<LibItem[]>(`library?kind=${kind}`).then(setItems);
+  const load = () => {
+    api.get<LibItem[]>(`library?kind=${kind}`).then(setItems);
+    api.get<LibItem[]>(`library?kind=${kind}&deleted=1`).then(setGone).catch(() => {});
+  };
   useEffect(() => { if (!MOVED[asked]) load(); }, [kind]);
 
   if (MOVED[asked]) return <Navigate to={MOVED[asked]} replace />;
@@ -70,6 +75,21 @@ export default function Library() {
         ))}
         {shown.length === 0 && <p className="text-sm text-teal">Nothing here yet.</p>}
       </div>
+      {gone.length > 0 && (
+        <div className="text-center mt-8">
+          <button className="text-sm text-teal underline" onClick={() => setShowGone((v) => !v)}>{showGone ? 'Hide' : 'Show'} recently deleted ({gone.length})</button>
+          {showGone && (
+            <div className="card divide-y divide-sky/60 mt-2 text-left">
+              {gone.map((g) => (
+                <div key={g.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                  <span className="truncate">{g.title || g.body.slice(0, 90)}</span>
+                  <button className="btn-ghost ml-auto shrink-0" onClick={async () => { await api.post(`library/${g.id}/restore`); load(); }}>Restore</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

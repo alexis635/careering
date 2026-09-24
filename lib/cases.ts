@@ -45,7 +45,7 @@ export async function caseRoute(b: Body) {
   const wins = await q(
     `SELECT title, to_char(happened_on,'Mon YYYY') AS happened, employer, role, description, impact, category, proof_url FROM wins WHERE id = ANY($1) AND deleted_at IS NULL ORDER BY happened_on NULLS LAST`, [ids]);
   if (!wins.length) throw new HttpError(400, 'Those wins could not be found');
-  const facts = (await q(`SELECT body FROM library_items WHERE kind='bio' AND title='Career facts (source of truth)' LIMIT 1`))[0]?.body ?? '';
+  const facts = (await q(`SELECT body FROM library_items WHERE kind='bio' AND title='Career facts (source of truth)' AND deleted_at IS NULL LIMIT 1`))[0]?.body ?? '';
 
   const text = await ask(
     `${FORMAT}\n\nPURPOSE: ${PURPOSES[purpose].label}. ${PURPOSES[purpose].focus}${prev ? '\n\nRevise the CURRENT CASE below according to the feedback. Change only what the feedback asks for and keep the same layout and rules.' : ''}`,

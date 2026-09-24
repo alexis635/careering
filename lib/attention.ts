@@ -20,7 +20,7 @@ export async function attention() {
   const actions = await q(
     `SELECT a.id, a.text, to_char(a.due_date,'YYYY-MM-DD') AS due_date, j.id AS job_id, j.company, j.role_title
        FROM job_actions a JOIN jobs j ON j.id = a.job_id JOIN lanes l ON l.id = j.lane_id
-      WHERE j.deleted_at IS NULL AND l.deleted_at IS NULL AND l.archived_at IS NULL AND a.done = false AND a.due_date IS NOT NULL AND a.due_date <= current_date + 4
+      WHERE j.deleted_at IS NULL AND l.deleted_at IS NULL AND l.archived_at IS NULL AND a.deleted_at IS NULL AND a.done = false AND a.due_date IS NOT NULL AND a.due_date <= current_date + 4
       ORDER BY a.due_date`,
   );
   // credentials (transcripts, certifications, permits) that expire within 90 days, or lapsed in the last 30

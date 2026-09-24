@@ -45,3 +45,8 @@ export async function updateComp(id: number, b: any) {
 }
 export const trashComp = (id: number) => q(`UPDATE comp_entries SET deleted_at = now() WHERE id=$1`, [id]);
 export const restoreComp = async (id: number) => (await q(`UPDATE comp_entries SET deleted_at = NULL WHERE id=$1 RETURNING ${COMP}`, [id]))[0];
+
+/** Pay entries that were removed, so they can be restored. */
+export const listDeletedComp = () =>
+  q(`SELECT c.id, c.role_id, to_char(c.effective_on,'YYYY-MM-DD') AS effective_on, c.kind, c.amount::float8 AS amount, c.note, r.employer, r.title AS role_title
+       FROM comp_entries c JOIN roles r ON r.id = c.role_id WHERE c.deleted_at IS NOT NULL AND r.deleted_at IS NULL ORDER BY c.deleted_at DESC`);
