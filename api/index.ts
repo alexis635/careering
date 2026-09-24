@@ -5,7 +5,7 @@ import { aiRoute } from '../lib/ai-routes.js';
 import { attention } from '../lib/attention.js';
 import { search } from '../lib/search.js';
 import { HttpError } from '../lib/ai.js';
-import { authUrl, checkState, gmailStatus, handleCallback, sendEmail, sendToSelf, syncAll, syncReplies } from '../lib/gmail.js';
+import { authUrl, checkState, gmailStatus, handleCallback, sendEmail, sendToSelf, syncAll, syncReplies, uploadSlides } from '../lib/gmail.js';
 import { mailList } from '../lib/mail.js';
 import { home } from '../lib/home.js';
 import * as vault from '../lib/vault.js';
@@ -289,6 +289,7 @@ export async function route(c: Ctx): Promise<Result> {
     if (b === 'status') return { json: await gmailStatus() };
     if (b === 'connect') return { json: { url: authUrl(c.host) } };
     if (b === 'send' && c.method === 'POST') return { json: await sendEmail(Number(c.body.job_id), c.body.to, c.body.subject, c.body.body, c.body.attachments ?? []) };
+    if (b === 'slides' && c.method === 'POST') return { json: await uploadSlides(String(c.body.title ?? ''), String(c.body.data ?? '')) };
     if (b === 'sync-all' && c.method === 'POST') return { json: await syncAll() };
     if (b === 'sync' && c.method === 'POST') return { json: await syncReplies(Number(c.body.job_id)) };
   }

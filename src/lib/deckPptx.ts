@@ -29,3 +29,8 @@ export async function deckPptxBlob(spec: DeckSpec): Promise<Blob> {
   const pptx = await buildPptx(spec);
   return (await pptx.write({ outputType: 'blob' })) as Blob;
 }
+
+export async function deckPptxBase64(spec: DeckSpec): Promise<string> {
+  const pptx = await buildPptx(spec);
+  return (await pptx.write({ outputType: 'base64' })) as string;
+}

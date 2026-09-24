@@ -3,7 +3,7 @@ import { q } from './db.js';
 import { HttpError } from './ai.js';
 import { noDash } from '../src/lib/noDash.js';
 
-const SCOPES = ['https://www.googleapis.com/auth/gmail.send', 'https://www.googleapis.com/auth/gmail.readonly'];
+const SCOPES = ['https://www.googleapis.com/auth/gmail.send', 'https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/drive.file'];
 
 export function redirectUri(host: string) {
   const local = host.startsWith('localhost') || host.startsWith('127.');
@@ -50,19 +50,38 @@ export async function handleCallback(code: string, host: string) {
   if (!t.refresh_token) throw new HttpError(400, 'Google did not return a refresh token. Remove Careering from your Google account permissions and reconnect.');
   const info: any = await (await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', { headers: { Authorization: `Bearer ${t.access_token}` } })).json();
   await q(`INSERT INTO settings (key, value) VALUES ('gmail', $1) ON CONFLICT (key) DO UPDATE SET value = $1`, [
-    JSON.stringify({ refresh_token: t.refresh_token, email: info.emailAddress || '' }),
+    JSON.stringify({ refresh_token: t.refresh_token, email: info.emailAddress || '', drive: String(t.scope || '').includes('auth/drive.file') }),
   ]);
 }
 
 export async function gmailStatus() {
   const r = (await q<any>(`SELECT value FROM settings WHERE key='gmail'`))[0];
-  return { connected: !!r, email: r?.value?.email ?? null };
+  return { connected: !!r, email: r?.value?.email ?? null, drive: !!r?.value?.drive };
 }
 
 async function accessToken(): Promise<string> {
   const r = (await q<any>(`SELECT value FROM settings WHERE key='gmail'`))[0];
   if (!r) throw new HttpError(400, 'Gmail is not connected');
   return (await tokenCall({ grant_type: 'refresh_token', refresh_token: r.value.refresh_token })).access_token;
+}
+
+/** Puts a PowerPoint into the user's Google Drive, converted to a Google Slides deck, and returns the link to open it. */
+export async function uploadSlides(title: string, pptxBase64: string) {
+  const r = (await q<any>(`SELECT value FROM settings WHERE key='gmail'`))[0];
+  if (!r?.value?.drive) throw new HttpError(409, 'Google Drive is not connected yet');
+  const boundary = 'careering' + Date.now().toString(36);
+  const meta = JSON.stringify({ name: noDash(title).slice(0, 120) || 'Interview deck', mimeType: 'application/vnd.google-apps.presentation' });
+  const body = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: application/vnd.openxmlformats-officedocument.presentationml.presentation\r\n\r\n`),
+    Buffer.from(pptxBase64, 'base64'),
+    Buffer.from(`\r\n--${boundary}--`),
+  ]);
+  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+    method: 'POST', headers: { Authorization: `Bearer ${await accessToken()}`, 'Content-Type': `multipart/related; boundary=${boundary}` }, body,
+  });
+  const data: any = await res.json();
+  if (!res.ok) throw new HttpError(502, `Google Drive: ${data.error?.message || res.statusText}`);
+  return { url: data.webViewLink || `https://docs.google.com/presentation/d/${data.id}/edit` };
 }
 
 async function gmail(path: string, init?: RequestInit) {

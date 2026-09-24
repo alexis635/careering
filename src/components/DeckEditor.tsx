@@ -36,14 +36,26 @@ export default function DeckEditor({ deck, onSaved, onTrashed }: { deck: Deck; o
     catch (e: any) { setMsg(e.message); } finally { setBusy(null); }
   }
   async function exportAs(kind: 'pdf' | 'pptx' | 'google') {
-    if (kind === 'google') window.open('https://docs.google.com/presentation/u/0/', '_blank');   // opened in the click itself so the browser allows it
     setBusy(kind); setMsg('');
+    let tab: Window | null = null;
     try {
       const clean = sanitizeSpec(spec);
+      if (kind === 'google') {
+        const st = await api.get<{ drive?: boolean }>('gmail/status');
+        if (!st.drive) {   // one time: Google asks for permission to create files this app makes in your Drive
+          if (!confirm('One-time setup: Google will ask you to allow Careering to create decks in your Drive, then bring you back here. Continue?')) return;
+          window.location.href = (await api.get<{ url: string }>('gmail/connect')).url; return;
+        }
+        tab = window.open('', '_blank');   // opened inside the click so the browser allows it
+        const { deckPptxBase64 } = await import('../lib/deckPptx');
+        const r = await api.post<{ url: string }>('gmail/slides', { title: deck.title, data: await deckPptxBase64(clean) });
+        if (tab) tab.location.href = r.url; else window.location.href = r.url;
+        setMsg('Opened in Google Slides. It is saved in your Drive.');
+        return;
+      }
       await (kind === 'pdf' ? downloadDeckPdf : downloadDeckPptx)(clean, deck.title);
-      if (kind === 'google') setMsg('Downloaded. In Google Slides, click the folder icon (Open file picker), choose Upload, and drop the file in. It opens fully editable.');
     }
-    catch (e: any) { setMsg(e.message || 'Could not build the file'); } finally { setBusy(null); }
+    catch (e: any) { tab?.close(); setMsg(e.message || 'Could not build the file'); } finally { setBusy(null); }
   }
   async function trash() {
     if (!confirm('Move this deck to Recently deleted? You can restore it any time.')) return;
@@ -115,7 +127,7 @@ export default function DeckEditor({ deck, onSaved, onTrashed }: { deck: Deck; o
         <div className="flex flex-wrap items-center gap-2">
           <button className="btn" disabled={!dirty || !!busy} onClick={save}><Save size={14} /> {busy === 'save' ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}</button>
           <button className="btn-ghost" disabled={!!busy} onClick={() => exportAs('pptx')}><Download size={14} /> {busy === 'pptx' ? 'Building…' : 'PowerPoint (opens in Keynote)'}</button>
-          <button className="btn-ghost" disabled={!!busy} onClick={() => exportAs('google')}><Download size={14} /> {busy === 'google' ? 'Building…' : 'Edit in Google Slides'}</button>
+          <button className="btn-ghost" disabled={!!busy} onClick={() => exportAs('google')}><Download size={14} /> {busy === 'google' ? 'Building…' : 'Open in Google Slides'}</button>
           <button className="btn-ghost" disabled={!!busy} onClick={() => exportAs('pdf')}><Download size={14} /> {busy === 'pdf' ? 'Building…' : 'PDF'}</button>
           <button className="btn-ghost ml-auto" title="Move to Recently deleted" onClick={trash}><Trash2 size={13} /></button>
           {msg && <span className="text-sm text-teal">{msg}</span>}
