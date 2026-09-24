@@ -103,6 +103,7 @@ const statements = [
   `ALTER TABLE lanes ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ`,
   `ALTER TABLE lanes ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`,
+  `ALTER TABLE lanes ADD COLUMN IF NOT EXISTS start_date DATE`,
   `CREATE INDEX IF NOT EXISTS jobs_lane_idx ON jobs(lane_id)`,
   `CREATE INDEX IF NOT EXISTS job_emails_thread_idx ON job_emails(gmail_thread_id)`,
 ];

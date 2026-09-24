@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Plus, ArrowLeft, Archive, Trash2, RotateCcw } from 'lucide-react';
+import { Plus, ArrowLeft, Archive, Trash2, RotateCcw, Pencil } from 'lucide-react';
 import { api } from '../api';
 import FitBadge from '../components/FitBadge';
-import { OUTCOMES, STAGES, type Job, type Lane, type Stage } from '../types';
+import { LANE_COLORS, OUTCOMES, STAGES, type Job, type Lane, type Stage } from '../types';
 
 export default function LaneView() {
   const { id } = useParams();
@@ -18,6 +18,8 @@ export default function LaneView() {
   const [dragId, setDragId] = useState<number | null>(null);
   const [hideClosed, setHideClosed] = useState(false);
   const [sortFit, setSortFit] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({ name: '', start_date: '', target_date: '', notes: '', color: '', status: 'active' });
 
   const load = () => {
     api.get<Lane>(`lanes/${id}`).then(setLane);
@@ -46,6 +48,17 @@ export default function LaneView() {
     setForm({ company: '', role_title: '', type: form.type, source_link: '' }); setAdding(false); load();
   }
 
+  function openEdit() {
+    if (!lane) return;
+    setDraft({ name: lane.name, start_date: (lane.start_date ?? '').slice(0, 10), target_date: (lane.target_date ?? '').slice(0, 10), notes: lane.notes ?? '', color: lane.color, status: lane.status });
+    setEditing((v) => !v);
+  }
+  async function saveLane(e: React.FormEvent) {
+    e.preventDefault();
+    if (!draft.name.trim()) return;
+    setLane(await api.patch<Lane>(`lanes/${id}`, { ...draft, start_date: draft.start_date || null, target_date: draft.target_date || null }));
+    setEditing(false);
+  }
   async function archiveLane() {
     await api.post(`lanes/${id}/archive`); nav('/lanes');
   }
@@ -81,9 +94,38 @@ export default function LaneView() {
           <input type="checkbox" checked={hideClosed} onChange={(e) => setHideClosed(e.target.checked)} /> Hide closed
         </label>
         <button className="btn" onClick={() => setAdding((v) => !v)}><Plus size={16} /> Add</button>
+        <button className="btn-ghost" onClick={openEdit} title="Rename, set the timeline, notes"><Pencil size={14} /> Edit</button>
         <button className="btn-ghost" onClick={archiveLane} title="Hide this lane but keep everything"><Archive size={14} /> Archive</button>
         <button className="btn-ghost" onClick={deleteLane} title="Move to Trash (restorable)"><Trash2 size={14} /> Delete</button>
       </div>
+      {editing && (
+        <form onSubmit={saveLane} className="card p-4 mb-5 max-w-3xl mx-auto space-y-3">
+          <div>
+            <label className="label">Lane name</label>
+            <input className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div><label className="label">Timeline starts</label><input className="input" type="date" value={draft.start_date} onChange={(e) => setDraft({ ...draft, start_date: e.target.value })} /></div>
+            <div><label className="label">Target date (timeline ends)</label><input className="input" type="date" value={draft.target_date} onChange={(e) => setDraft({ ...draft, target_date: e.target.value })} /></div>
+            <div><label className="label">Status</label>
+              <select className="input" value={draft.status} onChange={(e) => setDraft({ ...draft, status: e.target.value })}>
+                <option value="active">Active</option><option value="paused">Paused</option><option value="achieved">Achieved</option>
+              </select></div>
+          </div>
+          <div>
+            <label className="label">Lane notes (strategy, timing)</label>
+            <textarea className="input" rows={3} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
+          </div>
+          <div>
+            <label className="label">Color</label>
+            <div className="flex gap-2">{LANE_COLORS.map((c) => (
+              <button type="button" key={c} onClick={() => setDraft({ ...draft, color: c })} className={`w-7 h-7 rounded-full border-2 ${draft.color === c ? 'border-navy' : 'border-transparent'}`} style={{ background: c }} aria-label={c} />
+            ))}</div>
+          </div>
+          <div className="flex gap-2"><button className="btn">Save</button><button type="button" className="btn-ghost" onClick={() => setEditing(false)}>Cancel</button></div>
+        </form>
+      )}
+      {lane.notes && !editing && <p className="text-sm text-teal text-center max-w-3xl mx-auto mb-4 whitespace-pre-wrap">{lane.notes}</p>}
       {(lane.archived_at || lane.deleted_at) && (
         <div className="card p-3 mb-5 max-w-3xl mx-auto flex flex-wrap items-center justify-center gap-3 text-sm">
           <span>{lane.deleted_at ? 'This lane is in the Trash.' : 'This lane is archived.'} Everything in it is still saved.</span>

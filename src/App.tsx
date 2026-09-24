@@ -9,6 +9,7 @@ import Library from './pages/Library';
 import Search from './pages/Search';
 import Mail from './pages/Mail';
 import Weekly from './pages/Weekly';
+import Timeline from './pages/Timeline';
 import ArchivePage from './pages/Archive';
 
 function Login({ onDone }: { onDone: () => void }) {
@@ -62,6 +63,7 @@ export default function App() {
           <Link to="/" className="font-display text-xl font-bold text-white hover:text-sky transition-colors w-fit" title="Home">Careering</Link>
           <nav className="flex gap-1">
             <NavLink to="/lanes" end className={link}>Lanes</NavLink>
+            <NavLink to="/timeline" className={link}>Timeline</NavLink>
             <NavLink to="/weekly" className={link}>Week</NavLink>
             <NavLink to="/mail" className={link}>Mail</NavLink>
             <NavLink to="/library" className={link}>Library</NavLink>
@@ -82,6 +84,7 @@ export default function App() {
           <Route path="/jobs/:id" element={<JobDetail />} />
           <Route path="/library" element={<Library />} />
           <Route path="/search" element={<Search />} />
+          <Route path="/timeline" element={<Timeline />} />
           <Route path="/weekly" element={<Weekly />} />
           <Route path="/mail" element={<Mail />} />
           <Route path="/archive" element={<ArchivePage />} />

@@ -4,7 +4,7 @@ export const OUTCOMES = ['Won', 'Lost', 'Withdrawn'] as const;
 export const LANE_COLORS = ['#567C8D', '#2F4058', '#8FB0C7', '#B08968', '#7A9E7E', '#A66A6A'];
 
 export interface Lane {
-  id: number; name: string; target_date: string | null; status: 'active' | 'paused' | 'achieved';
+  id: number; name: string; start_date?: string | null; created_at?: string; target_date: string | null; status: 'active' | 'paused' | 'achieved';
   notes: string; color: string; position: number; archived_at?: string | null; deleted_at?: string | null;
   counts?: { stage: Stage; n: number }[];
 }

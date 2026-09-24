@@ -22,7 +22,7 @@ const JOB_FIELDS = [
   'contact_person', 'contact_notes', 'posting_text', 'match_notes', 'resume_version_id',
   'interview_prep', 'fit',
 ];
-const LANE_FIELDS = ['name', 'target_date', 'status', 'notes', 'color', 'position'];
+const LANE_FIELDS = ['name', 'start_date', 'target_date', 'status', 'notes', 'color', 'position'];
 const LIB_FIELDS = ['kind', 'title', 'body', 'tags'];
 
 function buildUpdate(table: string, fields: string[], id: number, body: any, touch = false) {
@@ -78,6 +78,16 @@ export async function route(c: Ctx): Promise<Result> {
       await q(`UPDATE lanes SET deleted_at = now() WHERE id=$1`, [id]);
       return { json: { ok: true, trashed: true } };
     }
+  }
+
+  // ---- timeline marks: job deadlines on each lane ----
+  if (a === 'timeline' && c.method === 'GET') {
+    return {
+      json: await q(
+        `SELECT j.lane_id, j.id, j.company, j.role_title, to_char(j.deadline,'YYYY-MM-DD') AS date
+           FROM jobs j JOIN lanes l ON l.id = j.lane_id
+          WHERE j.deleted_at IS NULL AND l.deleted_at IS NULL AND l.archived_at IS NULL AND j.deadline IS NOT NULL AND j.stage <> 'Closed' ORDER BY j.deadline`),
+    };
   }
 
   // ---- archive + trash ----

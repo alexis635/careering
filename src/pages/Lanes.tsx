@@ -18,6 +18,7 @@ export default function Lanes() {
   const [lanes, setLanes] = useState<Lane[] | null>(null);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
+  const [start, setStart] = useState('');
   const [target, setTarget] = useState('');
 
   const load = () => api.get<Lane[]>('lanes').then(setLanes);
@@ -28,11 +29,12 @@ export default function Lanes() {
     if (!name.trim()) return;
     await api.post('lanes', {
       name: name.trim(),
+      start_date: start || null,
       target_date: target || null,
       color: LANE_COLORS[(lanes?.length ?? 0) % LANE_COLORS.length],
       position: lanes?.length ?? 0,
     });
-    setName(''); setTarget(''); setAdding(false); load();
+    setName(''); setStart(''); setTarget(''); setAdding(false); load();
   }
 
   return (
@@ -47,6 +49,10 @@ export default function Lanes() {
           <div className="flex-1 min-w-56">
             <label className="label">Name</label>
             <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. LA · Teaching" autoFocus />
+          </div>
+          <div>
+            <label className="label">Starts</label>
+            <input className="input" type="date" value={start} onChange={(e) => setStart(e.target.value)} />
           </div>
           <div>
             <label className="label">Target date</label>
@@ -71,6 +77,7 @@ export default function Lanes() {
                   <h2 className="text-xl font-semibold leading-tight">{l.name}</h2>
                   {l.status !== 'active' && <span className="text-xs bg-sky/60 rounded px-2 py-0.5">{l.status}</span>}
                 </div>
+                {l.start_date && l.target_date && <p className="text-xs text-teal mt-1 text-center">{format(parseISO(l.start_date.slice(0, 10)), 'MMM yyyy')} to {format(parseISO(l.target_date.slice(0, 10)), 'MMM yyyy')}</p>}
                 {countdown(l.target_date) && <p className="text-sm text-teal mt-1 text-center">{countdown(l.target_date)}</p>}
                 <div className="mt-4 grid grid-cols-6 gap-1 text-center">
                   {STAGES.map((s) => (
