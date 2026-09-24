@@ -158,7 +158,7 @@ export default function JobDetail() {
         <button className="btn-ghost" title="Move to Trash (restorable)" onClick={async () => { if (confirm('Move this job to the Trash?\n\nEverything in it stays saved, and you can restore it anytime from Archive & Trash.')) { await api.del(`jobs/${id}`); nav(`/lanes/${job.lane_id}`); } }}><Trash2 size={14} /></button>
       </div>
 
-      <div className="flex justify-center gap-1 border-b border-sky my-5 overflow-x-auto">
+      <div className="flex justify-center gap-1 border-b border-sky my-5 overflow-x-auto overflow-y-hidden">
         {TABS.map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`px-3.5 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${tab === t ? 'border-navy font-semibold' : 'border-transparent text-teal hover:text-navy'}`}>
             {t}

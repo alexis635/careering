@@ -42,3 +42,5 @@ export interface WeeklyData {
   stale: Attention['stale'];
   actions: Attention['actions'];
 }
+export interface VaultDoc { id: number; title: string; category: string; issuer: string; notes: string; expires_on: string | null; file_name: string | null; mime: string | null; size: number | null; created_at: string; deleted_at?: string | null }
+export interface Win { id: number; title: string; happened_on: string | null; employer: string; role: string; description: string; impact: string; category: string; proof_url: string; bullet_id: number | null; deleted_at?: string | null }

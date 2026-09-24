@@ -8,11 +8,12 @@ import { HttpError } from '../lib/ai.js';
 import { authUrl, checkState, gmailStatus, handleCallback, sendEmail, sendToSelf, syncAll, syncReplies } from '../lib/gmail.js';
 import { mailList } from '../lib/mail.js';
 import { home } from '../lib/home.js';
+import * as vault from '../lib/vault.js';
 import { weekly, weeklyFocus, weeklyText } from '../lib/weekly.js';
 import { clearSession, isAuthed, issueSession } from '../lib/auth.js';
 
 type Ctx = { method: string; parts: string[]; body: any; query: URLSearchParams; host: string };
-type Result = { status?: number; json: any; cookie?: string };
+type Result = { status?: number; json: any; cookie?: string; file?: { name: string; mime: string; data: Buffer } };
 
 const STAGES = ['Saved', 'Applied', 'Screening', 'Interviewing', 'Offer', 'Closed'];
 
@@ -187,6 +188,25 @@ export async function route(c: Ctx): Promise<Result> {
 
   if (a === 'home' && c.method === 'GET') return { json: await home() };
 
+  // ---- career vault: documents and wins (nothing is ever destroyed, delete moves to Recently deleted) ----
+  if (a === 'vault' && b === 'docs') {
+    const did = Number(c2);
+    if (!c2 && c.method === 'GET') return { json: await vault.listDocs(c.query.get('deleted') === '1') };
+    if (!c2 && c.method === 'POST') return { json: await vault.createDoc(c.body) };
+    if (c2 && d === 'file' && c.method === 'GET') return { json: null, file: await vault.getDocFile(did) };
+    if (c2 && d === 'restore' && c.method === 'POST') return { json: (await vault.restoreDoc(did))[0] };
+    if (c2 && !d && c.method === 'PATCH') return { json: await vault.updateDoc(did, c.body) };
+    if (c2 && !d && c.method === 'DELETE') { await vault.trashDoc(did); return { json: { ok: true, trashed: true } }; }
+  }
+  if (a === 'wins') {
+    if (!b && c.method === 'GET') return { json: await vault.listWins(c.query.get('deleted') === '1') };
+    if (!b && c.method === 'POST') return { json: await vault.createWin(c.body) };
+    if (b && c2 === 'bullet-draft' && c.method === 'POST') return { json: await vault.winBulletDraft(id) };
+    if (b && c2 === 'restore' && c.method === 'POST') return { json: (await vault.restoreWin(id))[0] };
+    if (b && !c2 && c.method === 'PATCH') return { json: await vault.updateWin(id, c.body) };
+    if (b && !c2 && c.method === 'DELETE') { await vault.trashWin(id); return { json: { ok: true, trashed: true } }; }
+  }
+
   // ---- weekly summary ----
   if (a === 'weekly' && c.method === 'GET') return { json: await weekly() };
   if (a === 'weekly' && b === 'focus' && c.method === 'POST') return { json: { focus: await weeklyFocus(await weekly()) } };
@@ -264,8 +284,14 @@ async function readBody(req: IncomingMessage): Promise<any> {
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   const send = (r: Result) => {
     res.statusCode = r.status ?? 200;
-    res.setHeader('Content-Type', 'application/json');
     if (r.cookie) res.setHeader('Set-Cookie', r.cookie);
+    if (r.file) {   // a private file, only ever served to a signed-in user
+      res.setHeader('Content-Type', r.file.mime);
+      res.setHeader('Content-Disposition', `attachment; filename="${r.file.name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '')}"`);
+      res.setHeader('Cache-Control', 'private, no-store');
+      return res.end(r.file.data);
+    }
+    res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(r.json));
   };
   try {

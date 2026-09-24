@@ -3,6 +3,11 @@ import { Link } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import type { LibItem } from '../types';
+import VaultDocs from '../components/VaultDocs';
+import Wins from '../components/Wins';
+
+type Tab = LibItem['kind'] | 'docs' | 'wins';
+const VAULT_TABS: { key: Tab; label: string }[] = [{ key: 'docs', label: 'Career documents' }, { key: 'wins', label: 'Wins' }];
 
 const KINDS: { key: LibItem['kind']; label: string; hint: string }[] = [
   { key: 'bullet', label: 'Bullet bank', hint: 'One accomplishment per entry. Tag by skill or theme.' },
@@ -31,25 +36,29 @@ function Item({ item, onChange, onDelete }: { item: LibItem; onChange: (p: Parti
 }
 
 export default function Library() {
-  const [kind, setKind] = useState<LibItem['kind']>('bullet');
+  const [tab, setTab] = useState<Tab>('bullet');
+  const kind: LibItem['kind'] = tab === 'docs' || tab === 'wins' ? 'bullet' : tab;
   const [items, setItems] = useState<LibItem[]>([]);
   const [filter, setFilter] = useState('');
   const [showArchived, setShowArchived] = useState(false);
 
   const load = () => api.get<LibItem[]>(`library?kind=${kind}`).then(setItems);
-  useEffect(() => { load(); }, [kind]);
+  useEffect(() => { if (tab !== 'docs' && tab !== 'wins') load(); }, [tab]);
 
   const cur = KINDS.find((k) => k.key === kind)!;
   const shown = items.filter((i) => (showArchived || !i.tags.includes('archived')) && (!filter || (i.title + i.body + i.tags.join(' ')).toLowerCase().includes(filter.toLowerCase())));
 
   return (
     <div className="max-w-3xl mx-auto">
-      <h1 className="text-3xl font-bold mb-4 text-center">Content Library</h1>
-      <div className="flex justify-center gap-1 border-b border-sky mb-4 overflow-x-auto">
-        {KINDS.map((k) => (
-          <button key={k.key} onClick={() => setKind(k.key)} className={`px-3.5 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${kind === k.key ? 'border-navy font-semibold' : 'border-transparent text-teal hover:text-navy'}`}>{k.label}</button>
+      <h1 className="text-3xl font-bold mb-4 text-center">Library</h1>
+      <div className="flex justify-center gap-1 border-b border-sky mb-4 overflow-x-auto overflow-y-hidden">
+        {[...KINDS.map((k) => ({ key: k.key as Tab, label: k.label })), ...VAULT_TABS].map((k) => (
+          <button key={k.key} onClick={() => setTab(k.key)} className={`px-2.5 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${tab === k.key ? 'border-navy font-semibold' : 'border-transparent text-teal hover:text-navy'}`}>{k.label}</button>
         ))}
       </div>
+      {tab === 'docs' && <VaultDocs />}
+      {tab === 'wins' && <Wins />}
+      {tab !== 'docs' && tab !== 'wins' && <>
       <p className="text-sm text-teal mb-3 text-center">{cur.hint}{kind === 'resume' && <> Need one for something specific? <Link to="/resume" className="underline">Build a custom resume</Link>.</>}</p>
       <div className="flex gap-2 mb-4">
         <input className="input" placeholder="Search…" value={filter} onChange={(e) => setFilter(e.target.value)} />
@@ -64,6 +73,7 @@ export default function Library() {
         ))}
         {shown.length === 0 && <p className="text-sm text-teal">Nothing here yet.</p>}
       </div>
+      </>}
     </div>
   );
 }
