@@ -1,4 +1,4 @@
-import { noDash } from './noDash';
+import { noDash } from './noDash.js';
 
 /** A full lesson plan. Shared by the server (to clean what the AI writes) and the browser (to edit and export). */
 export interface Segment { title: string; minutes: number; mode: string; teacher: string; students: string; tips: string }
