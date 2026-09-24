@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { addDays, addMonths, endOfMonth, endOfWeek, format, isSameMonth, startOfMonth, startOfWeek } from 'date-fns';
-import { AlertTriangle, ArrowLeft, Award, BookOpen, Briefcase, CalendarDays, CheckSquare, ChevronLeft, ChevronRight, ClipboardList, FileText, Flag, FolderKanban, GraduationCap, LayoutDashboard, NotebookPen, Package, Paperclip, Plus, Receipt, RotateCcw, Target, Trash2, Trophy, Users } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Award, BookOpen, Briefcase, CalendarDays, CheckSquare, ChevronLeft, ChevronRight, ClipboardList, FileText, Flag, FolderKanban, GraduationCap, LayoutDashboard, Map, NotebookPen, Package, Paperclip, Plus, Receipt, RotateCcw, Target, Trash2, Trophy, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { api } from '../api';
 import { MAX_UPLOAD, kb, readFile } from '../lib/files';
+import LessonPlanner, { STANDARD_OPTIONS } from '../components/LessonPlanner';
 import type { Win, Workspace, WsItem } from '../types';
 
 const day = (d: string | null) => (d ? format(new Date(d + 'T00:00:00'), 'MMM d, yyyy') : '');
@@ -16,6 +17,7 @@ export const JOB_TYPES: Record<string, string> = { general: 'General', pm: 'Proj
 interface Spec {
   kind: string; label: string; add: string; body?: string; due?: string; time?: boolean; done?: boolean; email?: boolean; link?: boolean; amount?: boolean;
   status?: string[]; note?: string; empty: string; file?: string;
+  extras?: { key: string; label: string; options?: [string, string][] }[]; courseSelect?: boolean;
 }
 const SPECS: Record<string, Spec> = {
   tasks: { kind: 'task', label: 'Tasks', add: 'Add a task', due: 'Due', done: true, empty: 'No tasks yet.' },
@@ -27,8 +29,8 @@ const SPECS: Record<string, Spec> = {
   docs: { kind: 'document', label: 'Documents and handbooks', add: 'Document name, like: Employee handbook', body: 'What it covers, or the parts you need to remember', link: true, file: 'Attach a PDF', note: 'Upload a handbook or policy as a PDF (up to 3 MB) or keep a link and notes. Employer handbooks can be confidential, so keep only what you are allowed to. Files stay private to you.', empty: 'Nothing saved yet.' },
   stakeholders: { kind: 'stakeholder', label: 'Stakeholders', add: 'Name', body: 'Role, what they care about, how to keep them informed', email: true, empty: 'No stakeholders yet.' },
   risks: { kind: 'risk', label: 'Risks', add: 'Add a risk', body: 'What could go wrong and what you will do about it', status: ['Open', 'Watching', 'Resolved'], empty: 'No risks logged.' },
-  courses: { kind: 'course', label: 'Courses', add: 'Course or class', body: 'Grade level, focus, what you are covering', note: 'Keep student names, grades, and personal details out of Careering.', empty: 'No courses yet.' },
-  lessons: { kind: 'lesson', label: 'Lesson plans', add: 'Lesson or unit title', body: 'Objective, activities, materials, how you will know it worked', due: 'Teach on', note: 'Keep student names, grades, and personal details out of Careering. Materials your employer owns may not be yours to keep.', empty: 'No lesson plans yet.' },
+  courses: { kind: 'course', label: 'Courses', add: 'Course or class, like: Creative Writing', body: 'What the course is, how it runs, what students leave able to do', extras: [{ key: 'subject', label: 'Subject' }, { key: 'grade', label: 'Grade or level' }, { key: 'standards', label: 'Standards', options: STANDARD_OPTIONS }], note: 'Keep student names, grades, and personal details out of Careering.', empty: 'No courses yet.' },
+  curriculum: { kind: 'unit', label: 'Curriculum', add: 'Unit title, like: Voice and Narrative', body: 'Big questions, key skills, texts, the assessment at the end, and how many weeks', due: 'Starts', courseSelect: true, status: ['Planning', 'Teaching', 'Taught'], note: 'Map each course as a sequence of units. Lessons you build can hang off a unit.', empty: 'No units yet. Add a course first, then map its units here.' },
   certs: { kind: 'cert', label: 'Certification progress', add: 'Requirement', body: 'Details, hours, who to send it to', due: 'Due', status: ['Not started', 'In progress', 'Submitted', 'Complete'], empty: 'Nothing tracked yet.' },
   clients: { kind: 'client', label: 'Clients', add: 'Client name', body: 'Scope, rate, terms', email: true, empty: 'No clients yet.' },
   deliverables: { kind: 'deliverable', label: 'Deliverables', add: 'Add a deliverable', body: 'What you owe and to whom', due: 'Due', done: true, empty: 'No deliverables yet.' },
@@ -45,7 +47,7 @@ const GROUPS: { title: string; secs: Sec[] }[] = [
 const BY_TYPE: Record<string, Sec[]> = {
   general: [],
   pm: [{ id: 'stakeholders', label: 'Stakeholders', icon: Users }, { id: 'risks', label: 'Risks', icon: AlertTriangle }],
-  teaching: [{ id: 'courses', label: 'Courses', icon: BookOpen }, { id: 'lessons', label: 'Lesson plans', icon: ClipboardList }, { id: 'certs', label: 'Certification progress', icon: Award }],
+  teaching: [{ id: 'courses', label: 'Courses', icon: BookOpen }, { id: 'curriculum', label: 'Curriculum', icon: Map }, { id: 'lessons', label: 'Lesson plans', icon: ClipboardList }, { id: 'certs', label: 'Certification progress', icon: Award }],
   freelance: [{ id: 'clients', label: 'Clients', icon: Briefcase }, { id: 'deliverables', label: 'Deliverables', icon: Package }, { id: 'invoices', label: 'Invoices', icon: Receipt }],
 };
 const WRAP: Sec = { id: 'wrap', label: 'Wrap up', icon: Flag };
@@ -62,7 +64,8 @@ export default function WorkspacePage() {
   const { id } = useParams();
   const nav = useNavigate();
   const [ws, setWs] = useState<Workspace | null>(null);
-  const [sec, setSec] = useState('overview');
+  const [qs] = useSearchParams();
+  const [sec, setSec] = useState(qs.get('section') || 'overview');
   const [resp, setResp] = useState('');
   const [respDirty, setRespDirty] = useState(false);
   const [end, setEnd] = useState('');
@@ -81,7 +84,7 @@ export default function WorkspacePage() {
   const patchItem = async (i: WsItem, body: any) => { await api.patch(`ws-items/${i.id}`, body); load(); };
 
   const Section = ({ spec }: { spec: Spec }) => {
-    const [f, setF] = useState({ title: '', body: '', due_on: '', email: '', link: '', amount: '', time: '', status: spec.status?.[0] ?? '' });
+    const [f, setF] = useState<Record<string, string>>({ title: '', body: '', due_on: '', email: '', link: '', amount: '', time: '', status: spec.status?.[0] ?? '', course_id: '' });
     const [file, setFile] = useState<File | null>(null);
     const [err, setErr] = useState('');
     const list = items.filter((i) => i.kind === spec.kind);
@@ -93,6 +96,8 @@ export default function WorkspacePage() {
       if (spec.link && f.link) extra.link = f.link;
       if (spec.amount && f.amount) extra.amount = f.amount;
       if (spec.status) extra.status = f.status;
+      if (spec.courseSelect && f.course_id) extra.course_id = f.course_id;
+      for (const x of spec.extras ?? []) if (f[x.key]) extra[x.key] = f[x.key];
       if (file && file.size > MAX_UPLOAD) { setErr('That file is over 3 MB. Try a compressed PDF.'); return; }
       setErr('');
       const made = await api.post<WsItem>(`workspaces/${id}/items`, { kind: spec.kind, title: f.title, body: f.body, due_on: f.due_on || null, extra });
@@ -105,6 +110,14 @@ export default function WorkspacePage() {
         <div className="card p-4 space-y-2">
           <input className="input" placeholder={spec.add} value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
           {spec.body && <textarea className="input" rows={spec.kind === 'note' ? 6 : 2} placeholder={spec.body} value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} />}
+          {(spec.extras || spec.courseSelect) && (
+            <div className="flex flex-wrap gap-2">
+              {spec.courseSelect && <select className="input flex-1 min-w-40" value={f.course_id} onChange={(e) => setF({ ...f, course_id: e.target.value })}><option value="">Which course?</option>{items.filter((i) => i.kind === 'course').map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}</select>}
+              {(spec.extras ?? []).map((x) => x.options
+                ? <select key={x.key} className="input flex-1 min-w-40" value={f[x.key] ?? ''} onChange={(e) => setF({ ...f, [x.key]: e.target.value })}><option value="">{x.label}</option>{x.options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+                : <input key={x.key} className="input flex-1 min-w-40" placeholder={x.label} value={f[x.key] ?? ''} onChange={(e) => setF({ ...f, [x.key]: e.target.value })} />)}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             {spec.email && <input className="input flex-1 min-w-40" type="email" placeholder="Email (optional)" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />}
             {spec.link && <input className="input flex-1 min-w-40" placeholder="Link (optional)" value={f.link} onChange={(e) => setF({ ...f, link: e.target.value })} />}
@@ -126,6 +139,8 @@ export default function WorkspacePage() {
                 {i.body && <div className="text-sm text-teal whitespace-pre-wrap">{i.body}</div>}
                 <div className="text-xs text-teal flex flex-wrap gap-x-3">
                   {i.due_on && <span>{spec.due} {day(i.due_on)}</span>}
+                  {spec.courseSelect && i.extra?.course_id && <span>{items.find((c) => String(c.id) === i.extra.course_id)?.title}</span>}
+                  {(spec.extras ?? []).map((x) => i.extra?.[x.key] ? <span key={x.key}>{x.options?.find(([v]) => v === i.extra[x.key])?.[1] ?? i.extra[x.key]}</span> : null)}
                   {i.extra?.amount && <span>${Number(i.extra.amount).toLocaleString()}</span>}
                   {i.extra?.email && <a href={`mailto:${i.extra.email}`} className="underline">{i.extra.email}</a>}
                   {i.file_name && <a href={`/api/ws-items/${i.id}/file`} className="underline inline-flex items-center gap-1"><Paperclip size={11} /> {i.file_name} ({kb(i.size ?? null)})</a>}
@@ -286,6 +301,8 @@ export default function WorkspacePage() {
 
           {sec === 'schedule' && <Schedule />}
           {spec && <Section spec={spec} key={sec} />}
+
+          {sec === 'lessons' && <LessonPlanner workspaceId={ws.id} items={items} />}
 
           {sec === 'wins' && (
             <div className="space-y-4">

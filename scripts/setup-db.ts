@@ -198,6 +198,18 @@ const statements = [
   )`,
   `ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'general'`,
   `ALTER TABLE ws_items ADD COLUMN IF NOT EXISTS file_name TEXT, ADD COLUMN IF NOT EXISTS mime TEXT, ADD COLUMN IF NOT EXISTS size INT, ADD COLUMN IF NOT EXISTS file_data BYTEA`,
+  `CREATE TABLE IF NOT EXISTS lesson_plans (
+    id SERIAL PRIMARY KEY,
+    workspace_id INT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    course_id INT,
+    unit_id INT,
+    title TEXT NOT NULL DEFAULT '',
+    params JSONB NOT NULL DEFAULT '{}',
+    plan JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+  )`,
   `CREATE TABLE IF NOT EXISTS decks (
     id SERIAL PRIMARY KEY,
     job_id INT REFERENCES jobs(id) ON DELETE CASCADE,

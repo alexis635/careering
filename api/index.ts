@@ -13,6 +13,7 @@ import * as cases from '../lib/cases.js';
 import * as roles from '../lib/roles.js';
 import * as decks from '../lib/decks.js';
 import * as thrive from '../lib/thrive.js';
+import * as lessons from '../lib/lessons.js';
 import { exportAll } from '../lib/export.js';
 import { cleanStagesConfig } from '../lib/stages.js';
 import { weekly, weeklyFocus, weeklyText } from '../lib/weekly.js';
@@ -245,6 +246,12 @@ export async function route(c: Ctx): Promise<Result> {
     if (b && c2 === 'wrapup' && c.method === 'POST') return { json: await thrive.wrapUp(id, c.body) };
     if (b && c2 === 'reopen' && c.method === 'POST') return { json: await thrive.reopen(id) };
     if (b && c2 === 'items' && c.method === 'POST') return { json: await thrive.createItem(id, c.body) };
+  }
+  if (a === 'lessons') {
+    if (!b && c.method === 'GET') return { json: await lessons.listLessons(c.query.get('workspace_id') ? Number(c.query.get('workspace_id')) : null, c.query.get('deleted') === '1') };
+    if (b && c2 === 'restore' && c.method === 'POST') return { json: await lessons.restoreLesson(id) };
+    if (b && !c2 && c.method === 'PATCH') return { json: await lessons.updateLesson(id, c.body) };
+    if (b && !c2 && c.method === 'DELETE') { await lessons.trashLesson(id); return { json: { ok: true, trashed: true } }; }
   }
   if (a === 'ws-items' && b) {
     if (c2 === 'file' && c.method === 'GET') return { json: null, file: await thrive.getItemFile(id) };
