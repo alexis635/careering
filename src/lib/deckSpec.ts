@@ -1,4 +1,4 @@
-import { noDash } from './noDash';
+import { noDash } from './noDash.js';
 
 /** The seven slide layouts a deck can use. Preview, PDF, and PowerPoint all draw exactly these. */
 export const LAYOUTS = ['title', 'statement', 'bigNumber', 'list', 'twoColumn', 'timeline', 'closing'] as const;
