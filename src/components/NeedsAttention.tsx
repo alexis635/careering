@@ -15,12 +15,19 @@ export default function NeedsAttention({ att }: { att: Attention | null }) {
   const soon = att.deadlines.filter((d) => differenceInCalendarDays(parseISO(d.deadline), new Date()) <= 14);
   const acts = att.actions;
   const stale = att.stale.filter((s) => differenceInCalendarDays(new Date(), parseISO(s.last_activity)) >= 7);
-  if (!soon.length && !acts.length && !stale.length) return null;
+  const creds = att.credentials ?? [];
+  if (!soon.length && !acts.length && !stale.length && !creds.length) return null;
   const row = 'flex items-center gap-3 py-1.5 text-sm';
   return (
     <div className="card p-5 mb-6 max-w-3xl mx-auto">
       <h2 className="text-xl font-semibold mb-2 text-center">Needs attention</h2>
       <div className="divide-y divide-sky/60">
+        {creds.map((c) => { const r = rel(c.expires_on); const past = differenceInCalendarDays(parseISO(c.expires_on), new Date()) < 0; return (
+          <Link key={`c${c.id}`} to="/library?tab=docs" className={row}>
+            <span className="w-2 h-2 rounded-full shrink-0 bg-navy" />
+            <span className="font-medium">{c.title}</span><span className="text-teal">Credential</span>
+            <span className={`ml-auto ${r.late ? 'font-semibold' : 'text-teal'}`}>{past ? `Expired ${r.text.replace(' overdue', ' ago')}` : `Expires ${r.text}`}</span>
+          </Link>); })}
         {soon.map((d) => { const r = rel(d.deadline); return (
           <Link key={`d${d.id}`} to={`/jobs/${d.id}`} className={row}>
             <span className="w-2 h-2 rounded-full shrink-0" style={{ background: d.color }} />

@@ -23,5 +23,9 @@ export async function attention() {
       WHERE j.deleted_at IS NULL AND l.deleted_at IS NULL AND l.archived_at IS NULL AND a.done = false AND a.due_date IS NOT NULL AND a.due_date <= current_date + 4
       ORDER BY a.due_date`,
   );
-  return { deadlines, stale, actions };
+  // credentials (transcripts, certifications, permits) that expire within 90 days, or lapsed in the last 30
+  const credentials = await q(
+    `SELECT id, title, category, to_char(expires_on,'YYYY-MM-DD') AS expires_on FROM career_docs
+      WHERE deleted_at IS NULL AND expires_on IS NOT NULL AND expires_on <= current_date + 90 AND expires_on >= current_date - 30 ORDER BY expires_on`);
+  return { deadlines, stale, actions, credentials };
 }

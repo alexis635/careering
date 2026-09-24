@@ -145,6 +145,29 @@ const statements = [
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at TIMESTAMPTZ
   )`,
+  `CREATE TABLE IF NOT EXISTS roles (
+    id SERIAL PRIMARY KEY,
+    employer TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    start_date DATE,
+    end_date DATE,
+    approx BOOLEAN NOT NULL DEFAULT false,
+    notes TEXT NOT NULL DEFAULT '',
+    job_id INT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+  )`,
+  `CREATE TABLE IF NOT EXISTS comp_entries (
+    id SERIAL PRIMARY KEY,
+    role_id INT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    effective_on DATE,
+    kind TEXT NOT NULL DEFAULT 'raise',
+    amount NUMERIC(12,2),
+    note TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+  )`,
   `CREATE INDEX IF NOT EXISTS jobs_lane_idx ON jobs(lane_id)`,
   `CREATE INDEX IF NOT EXISTS job_emails_thread_idx ON job_emails(gmail_thread_id)`,
 ];

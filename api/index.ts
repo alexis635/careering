@@ -10,6 +10,8 @@ import { mailList } from '../lib/mail.js';
 import { home } from '../lib/home.js';
 import * as vault from '../lib/vault.js';
 import * as cases from '../lib/cases.js';
+import * as roles from '../lib/roles.js';
+import { exportAll } from '../lib/export.js';
 import { weekly, weeklyFocus, weeklyText } from '../lib/weekly.js';
 import { clearSession, isAuthed, issueSession } from '../lib/auth.js';
 
@@ -214,6 +216,21 @@ export async function route(c: Ctx): Promise<Result> {
     if (b && !c2 && c.method === 'PATCH') return { json: await cases.updateCase(id, c.body) };
     if (b && !c2 && c.method === 'DELETE') { await cases.trashCase(id); return { json: { ok: true, trashed: true } }; }
   }
+
+  if (a === 'roles') {
+    if (!b && c.method === 'GET') return { json: await roles.listRoles(c.query.get('deleted') === '1') };
+    if (!b && c.method === 'POST') return { json: await roles.createRole(c.body) };
+    if (b && c2 === 'comp' && c.method === 'POST') return { json: await roles.createComp(id, c.body) };
+    if (b && c2 === 'restore' && c.method === 'POST') return { json: await roles.restoreRole(id) };
+    if (b && !c2 && c.method === 'PATCH') return { json: await roles.updateRole(id, c.body) };
+    if (b && !c2 && c.method === 'DELETE') { await roles.trashRole(id); return { json: { ok: true, trashed: true } }; }
+  }
+  if (a === 'comp' && b) {
+    if (c2 === 'restore' && c.method === 'POST') return { json: await roles.restoreComp(id) };
+    if (!c2 && c.method === 'PATCH') return { json: await roles.updateComp(id, c.body) };
+    if (!c2 && c.method === 'DELETE') { await roles.trashComp(id); return { json: { ok: true, trashed: true } }; }
+  }
+  if (a === 'export' && c.method === 'GET') return { json: await exportAll() };
 
   // ---- weekly summary ----
   if (a === 'weekly' && c.method === 'GET') return { json: await weekly() };
