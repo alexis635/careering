@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Route, Routes, useLocation, useMatch, useNavigate } from 'react-router-dom';
+import { Search as SearchIcon, X } from 'lucide-react';
 import { api } from './api';
 import Hub from './pages/Hub';
 import Home from './pages/Home';
@@ -39,15 +40,29 @@ function Login({ onDone }: { onDone: () => void }) {
   );
 }
 
-function HeaderSearch() {
+function SearchBar({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
   const onJob = useMatch('/jobs/:id');
   const [term, setTerm] = useState('');
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { ref.current?.focus(); }, []);
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (term.trim()) nav(`/search?q=${encodeURIComponent(term.trim())}${onJob ? `&job=${onJob.params.id}` : ''}`); }}>
-      <input value={term} onChange={(e) => setTerm(e.target.value)} placeholder={onJob ? 'Search or ask (this job first)…' : 'Search or ask anything…'}
-        className="w-40 sm:w-56 md:w-72 rounded-lg bg-white/10 text-white placeholder:text-sky/70 px-3 py-1.5 text-sm focus:outline-none focus:bg-white/20" />
-    </form>
+    <div className="bg-navy border-t border-white/10">
+      <form
+        className="max-w-2xl mx-auto px-4 py-2.5 flex items-center gap-2"
+        onSubmit={(e) => { e.preventDefault(); if (term.trim()) { nav(`/search?q=${encodeURIComponent(term.trim())}${onJob ? `&job=${onJob.params.id}` : ''}`); onClose(); } }}
+      >
+        <SearchIcon size={16} className="text-sky shrink-0" aria-hidden="true" />
+        <input
+          ref={ref}
+          value={term}
+          onChange={(e) => setTerm(e.target.value)}
+          placeholder={onJob ? 'Search or ask, this job first' : 'Search or ask anything'}
+          className="flex-1 rounded-lg bg-white/10 text-white placeholder:text-sky/70 px-3 py-2 text-sm focus:outline-none focus:bg-white/20"
+        />
+        <button type="button" onClick={onClose} aria-label="Close search" className="text-sky hover:text-white"><X size={18} /></button>
+      </form>
+    </div>
   );
 }
 
@@ -64,6 +79,18 @@ const PURSUE_LINKS = [['/pursue', 'Overview'], ['/lanes', 'Lanes'], ['/timeline'
 
 export default function App() {
   const { pathname } = useLocation();
+  const [searchOpen, setSearchOpen] = useState(false);
+  useEffect(() => { setSearchOpen(false); }, [pathname]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName) || t.isContentEditable);
+      if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey) { e.preventDefault(); setSearchOpen(true); }
+      if (e.key === 'Escape') setSearchOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const [authed, setAuthed] = useState<boolean | null>(null);
   const check = () => api.get<{ authed: boolean }>('me').then((r) => setAuthed(r.authed)).catch(() => setAuthed(false));
   useEffect(() => { check(); }, []);
@@ -86,10 +113,11 @@ export default function App() {
             ))}
           </nav>
           <div className="order-2 ml-auto flex items-center justify-end gap-4 md:order-3">
-            <HeaderSearch />
+            <button onClick={() => setSearchOpen((v) => !v)} aria-label="Search" title="Search (press /)" className={`rounded-lg p-1.5 ${searchOpen ? 'bg-white/15 text-white' : 'text-sky hover:text-white'}`}><SearchIcon size={18} /></button>
             <button className="text-sm text-sky hover:text-white whitespace-nowrap" onClick={async () => { await api.post('logout'); setAuthed(false); }}>Sign out</button>
           </div>
         </div>
+        {searchOpen && <SearchBar onClose={() => setSearchOpen(false)} />}
       </header>
       {area === 'pursue' && (
         <div className="bg-white/70 border-b border-sky/70">
