@@ -10,6 +10,7 @@ import Search from './pages/Search';
 import Mail from './pages/Mail';
 import Weekly from './pages/Weekly';
 import Timeline from './pages/Timeline';
+import ResumeBuilder from './pages/Resume';
 import ArchivePage from './pages/Archive';
 
 function Login({ onDone }: { onDone: () => void }) {
@@ -61,11 +62,12 @@ export default function App() {
       <header className="bg-navy">
         <div className="max-w-7xl mx-auto px-4 h-14 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
           <Link to="/" className="font-display text-xl font-bold text-white hover:text-sky transition-colors w-fit" title="Home">Careering</Link>
-          <nav className="flex gap-1">
+          <nav className="flex flex-wrap justify-center gap-1">
             <NavLink to="/lanes" end className={link}>Lanes</NavLink>
             <NavLink to="/timeline" className={link}>Timeline</NavLink>
             <NavLink to="/weekly" className={link}>Week</NavLink>
             <NavLink to="/mail" className={link}>Mail</NavLink>
+            <NavLink to="/resume" className={link}>Resume</NavLink>
             <NavLink to="/library" className={link}>Library</NavLink>
           </nav>
           <div className="flex items-center justify-end gap-4">
@@ -85,6 +87,7 @@ export default function App() {
           <Route path="/library" element={<Library />} />
           <Route path="/search" element={<Search />} />
           <Route path="/timeline" element={<Timeline />} />
+          <Route path="/resume" element={<ResumeBuilder />} />
           <Route path="/weekly" element={<Weekly />} />
           <Route path="/mail" element={<Mail />} />
           <Route path="/archive" element={<ArchivePage />} />

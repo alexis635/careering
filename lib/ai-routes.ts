@@ -1,6 +1,7 @@
 import { q } from './db.js';
 import { fetchPosting } from './posting.js';
 import { search } from './search.js';
+import { noDash } from '../src/lib/noDash.js';
 import { HttpError, ask, libraryContext, loadJob, parseJson, postingOrThrow, saveDoc } from './ai.js';
 
 type Body = { job_id?: number; instructions?: string; kind?: string; contact_name?: string; contact_title?: string; resume_id?: number };
@@ -31,6 +32,7 @@ async function parseJob(job: any, posting: string) {
 
 export async function aiRoute(action: string, body: Body): Promise<any> {
   if (action === 'ask') return askRoute(body);
+  if (action === 'resume') return resumeRoute(body as any);
   const jobId = Number(body.job_id);
   if (!jobId) throw new HttpError(400, 'job_id required');
   const job = await loadJob(jobId);
@@ -171,4 +173,38 @@ async function askRoute(body: Body & { q?: string }) {
     4000,
   );
   return { answer };
+}
+
+/** Resume builder: describe the resume you need, no job required. Every result (and every refinement) is saved to the Library as its own item. */
+const RESUME_FORMAT =
+  'Write a one page resume in EXACTLY this plain-text layout, nothing else (no code fences, no commentary):\n' +
+  'Line 1: the candidate\'s full name. Line 2: a short headline for the target role. Line 3: one contact line (email · phone) from the CAREER FACTS. Never add a location.\n' +
+  'Then sections, each starting with "## " and an uppercase title, such as "## SUMMARY", "## EXPERIENCE", "## EDUCATION", "## KEY COMPETENCIES". Order the sections by what fits the request best.\n' +
+  'Inside a section, each job or school is one line "### Title | Dates", then one line "> Organization · City, ST", then bullets that each start with "- ". Summary and competencies are plain lines.\n' +
+  'Use the exact employers, titles, and dates from the CAREER FACTS, and never leave a gap in the timeline. Choose and lightly reword bullets from the BULLET BANK and the master resumes so they serve the request; older or less relevant roles can shrink to one bullet. Keep every fact, date, and number exactly as written. It must fit one page with comfortable, readable text: 15 to 19 bullets in total, each under 30 words, and a summary of 2 to 3 sentences.';
+
+async function resumeRoute(body: { request?: string; feedback?: string; item_id?: number; base_id?: number }) {
+  const lib = await libraryContext();
+  if (lib.empty) throw new HttpError(400, 'Add your resumes and bullets to the Library first');
+  let prev: any = null;
+  if (body.item_id) prev = (await q(`SELECT id, title, body FROM library_items WHERE id=$1 AND kind='resume'`, [body.item_id]))[0];
+  const request = (body.request || '').trim();
+  const feedback = (body.feedback || '').trim();
+  if (!prev && !request) throw new HttpError(400, 'Describe the resume you need first');
+  if (prev && !feedback) throw new HttpError(400, 'Say what to change first');
+
+  const base = body.base_id ? (await q(`SELECT title, body FROM library_items WHERE id=$1 AND kind='resume'`, [body.base_id]))[0] : null;
+  const text = await ask(
+    prev ? `${RESUME_FORMAT}\n\nRevise the CURRENT RESUME below according to the feedback. Change only what the feedback asks for, and keep the same layout.` : RESUME_FORMAT,
+    prev
+      ? `CURRENT RESUME:\n${prev.body}\n\nFEEDBACK: ${feedback}\n\nCANDIDATE MATERIAL:\n${lib.text}`
+      : `WHAT THE RESUME IS FOR: ${request}\n\n${base ? `START FROM THIS RESUME'S FRAMING (${base.title}):\n${base.body}\n\n` : ''}CANDIDATE MATERIAL:\n${lib.text}`,
+    9000,
+  );
+
+  // Save every version, never overwrite: "Custom: <request>" then "... v2", "... v3" for refinements.
+  const rootTitle = prev ? String(prev.title).replace(/ v\d+$/, '') : `Custom: ${request.replace(/\s+/g, ' ').slice(0, 60)}`;
+  const n = (await q(`SELECT count(*)::int AS n FROM library_items WHERE kind='resume' AND (title = $1 OR title LIKE $2)`, [rootTitle, `${rootTitle} v%`]))[0].n;
+  const title = noDash(n ? `${rootTitle} v${n + 1}` : rootTitle);
+  return (await q(`INSERT INTO library_items (kind, title, body, tags) VALUES ('resume', $1, $2, $3) RETURNING *`, [title, text, ['generated']]))[0];
 }

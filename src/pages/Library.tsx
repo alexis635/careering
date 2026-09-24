@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import type { LibItem } from '../types';
@@ -49,7 +50,7 @@ export default function Library() {
           <button key={k.key} onClick={() => setKind(k.key)} className={`px-3.5 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${kind === k.key ? 'border-navy font-semibold' : 'border-transparent text-teal hover:text-navy'}`}>{k.label}</button>
         ))}
       </div>
-      <p className="text-sm text-teal mb-3 text-center">{cur.hint}</p>
+      <p className="text-sm text-teal mb-3 text-center">{cur.hint}{kind === 'resume' && <> Need one for something specific? <Link to="/resume" className="underline">Build a custom resume</Link>.</>}</p>
       <div className="flex gap-2 mb-4">
         <input className="input" placeholder="Search…" value={filter} onChange={(e) => setFilter(e.target.value)} />
         <label className="text-sm text-teal flex items-center gap-1.5 whitespace-nowrap"><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Show archived</label>

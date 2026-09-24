@@ -23,9 +23,9 @@ export interface Layout { fs: number; g: number }   // fs = body font size (pt),
 
 const mk = ({ fs, g }: Layout) => StyleSheet.create({
   page: { paddingTop: 22 + 8 * (g - 1), paddingBottom: 18 + 8 * (g - 1), paddingHorizontal: 38, fontFamily: 'Helvetica', fontSize: fs, color: '#1f2937', lineHeight: Math.min(1.22 + 0.03 * (g - 1), 1.34) },
-  name: { fontFamily: 'Times-Bold', fontSize: fs * 2.5, lineHeight: 1.1, color: NAVY, marginBottom: 2 * g },
-  headline: { fontSize: fs * 1.25, color: TEAL, fontFamily: 'Helvetica-Bold', marginBottom: 2 * g },
-  contact: { fontSize: fs, color: '#4b5563', marginBottom: 6 * g },
+  name: { fontFamily: 'Times-Bold', fontSize: fs * 2.5, lineHeight: 1.1, color: NAVY, marginBottom: 2 * g, textAlign: 'center' },
+  headline: { fontSize: fs * 1.25, color: TEAL, fontFamily: 'Helvetica-Bold', marginBottom: 2 * g, textAlign: 'center' },
+  contact: { fontSize: fs, color: '#4b5563', marginBottom: 6 * g, textAlign: 'center' },
   sub: { fontSize: fs, color: TEAL, marginBottom: 1 * g },
   section: { fontFamily: 'Helvetica-Bold', fontSize: fs, letterSpacing: 1.2, color: TEAL, marginTop: 7 * g, paddingBottom: 1.5 * g, borderBottomWidth: 0.75, borderBottomColor: '#C8D9E6', marginBottom: 3 * g },
   entry: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 3 * g },
@@ -176,13 +176,23 @@ export function LetterDoc({ text, layout = { fs: 11, g: 1 } }: { text: string; l
 
 export type PdfKind = 'resume' | 'letter';
 
-export async function pdfBlob(kind: PdfKind, text: string): Promise<Blob> {
+async function fitPdf(kind: PdfKind, text: string) {
   const render: RenderFn = async (layout) => {
     const doc = kind === 'letter' ? <LetterDoc text={text} layout={layout} /> : <ResumeDoc text={text} layout={layout} />;
     return new Uint8Array(await (await pdf(doc).toBlob()).arrayBuffer());
   };
-  const { bytes } = await fitResume(render, kind === 'letter' ? { fsMin: 10, fsMax: 12.5, gMax: 2.2 } : {});
+  return fitResume(render, kind === 'letter' ? { fsMin: 10, fsMax: 12.5, gMax: 2.2 } : {});
+}
+
+export async function pdfBlob(kind: PdfKind, text: string): Promise<Blob> {
+  const { bytes } = await fitPdf(kind, text);
   return new Blob([bytes as BlobPart], { type: 'application/pdf' });
+}
+
+/** How the document lays out: page count and the text size it ended up at. */
+export async function measureFit(kind: PdfKind, text: string): Promise<{ pages: number; fs: number }> {
+  const { pages, layout } = await fitPdf(kind, text);
+  return { pages, fs: layout.fs };
 }
 
 export const resumeBlob = (text: string) => pdfBlob('resume', text);
