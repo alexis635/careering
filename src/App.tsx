@@ -116,7 +116,7 @@ export default function App() {
     `px-3 py-1.5 rounded-lg text-sm whitespace-nowrap ${isActive ? 'bg-navy text-white' : 'text-teal hover:text-navy hover:bg-sky/40'}`;
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen flex flex-col">
       <header className="bg-navy sticky top-0 z-30 shadow-[0_1px_0_rgba(255,255,255,.06),0_8px_24px_-16px_rgba(0,0,0,.5)]">
         <div className="max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2 md:grid md:grid-cols-[1fr_auto_1fr] md:h-14 md:py-0">
           <Link to="/" className="order-1 flex items-center gap-2.5 font-display text-xl font-bold text-white hover:text-sky transition-colors w-fit" title="Home"><span className="grid place-items-center w-8 h-8 rounded-lg bg-beige text-navy text-lg leading-none">C</span>Careering</Link>
@@ -139,7 +139,7 @@ export default function App() {
           </nav>
         </div>
       )}
-      <main className={/^\/thrive\/\d+/.test(pathname) ? 'w-full' : 'max-w-7xl mx-auto px-4 py-6'}>
+      <main className={`flex-1 ${/^\/thrive\/\d+/.test(pathname) ? 'w-full' : 'w-full max-w-7xl mx-auto px-4 py-6'}`}>
         <Routes>
           <Route path="/" element={<Hub />} />
           <Route path="/pursue" element={<Home />} />
@@ -160,7 +160,7 @@ export default function App() {
           <Route path="/archive" element={<ArchivePage />} />
         </Routes>
       </main>
-      <footer className="mt-16 border-t border-sky/60 bg-white/60">
+      <footer className="mt-12 border-t border-sky/60 bg-white/60">
         <div className="max-w-7xl mx-auto px-4 py-8 flex flex-wrap items-center justify-between gap-4 text-sm text-teal">
           <div className="flex items-center gap-2"><span className="grid place-items-center w-6 h-6 rounded-md bg-navy text-beige font-display text-sm font-bold">C</span><span className="font-display font-semibold text-navy">Careering</span></div>
           <nav className="flex gap-5">{AREAS.map(([k, label, to]) => <Link key={k} to={to} className="hover:text-navy">{label}</Link>)}</nav>
