@@ -27,6 +27,8 @@ export default function Home() {
   }, []);
 
   const count = (stages: string[]) => (lanes ?? []).reduce((n, l) => n + (l.counts ?? []).filter((c) => stages.includes(c.stage)).reduce((m, c) => m + c.n, 0), 0);
+  const inFlight = count(['Applied', 'Screening', 'Interviewing', 'Offer']);
+  const summary = lanes === null ? 'Loading your search...' : inFlight ? `${inFlight} ${inFlight === 1 ? 'opportunity' : 'opportunities'} in motion. Here is where things stand.` : 'Nothing in motion yet. Add a job to get started.';
   const tiles = [
     { label: 'To apply', value: count(['Saved']) },
     { label: 'In progress', value: count(['Applied', 'Screening']) },
@@ -37,24 +39,30 @@ export default function Home() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold">{greeting()}</h1>
-        <p className="text-teal mt-1">{format(new Date(), 'EEEE, MMMM d')}</p>
-      </div>
+      <section className="relative overflow-hidden rounded-3xl bg-navy text-beige px-6 py-12 sm:px-12 sm:py-16 text-center">
+        <span aria-hidden="true" className="absolute -right-6 -top-20 font-display text-[22rem] leading-none text-white/[0.04] select-none">C</span>
+        <p className="relative text-sm uppercase tracking-[0.2em] text-sky">{format(new Date(), 'EEEE, MMMM d')}</p>
+        <h1 className="relative text-5xl sm:text-6xl font-extrabold mt-3 leading-[1.05]">{greeting()}</h1>
+        <p className="relative text-sky text-lg mt-4 max-w-xl mx-auto">{summary}</p>
+        <div className="relative mt-8 flex flex-wrap justify-center gap-3">
+          <a href="#add-job" className="btn btn-lg !bg-beige !text-navy hover:!bg-white">Add a job</a>
+          <Link to="/weekly" className="btn btn-lg !bg-white/10 hover:!bg-white/20 border border-white/20">See your week</Link>
+        </div>
+      </section>
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 -mt-2">
         {tiles.map((t) => (
-          <div key={t.label} className="card py-4 text-center">
-            <div className="text-3xl font-display font-bold">{t.value}</div>
-            <div className="text-[11px] uppercase tracking-wide text-teal mt-0.5">{t.label}</div>
+          <div key={t.label} className="card card-hover py-6 text-center">
+            <div className="text-5xl font-display font-bold leading-none">{t.value}</div>
+            <div className="text-[11px] uppercase tracking-[0.14em] text-teal mt-2">{t.label}</div>
           </div>
         ))}
       </div>
 
-      <p className="text-center -mt-2"><Link to="/weekly" className="text-sm text-teal underline">See your week in full</Link><span className="text-teal mx-2">|</span><Link to="/timeline" className="text-sm text-teal underline">See your lane timeline</Link><span className="text-teal mx-2">|</span><Link to="/case" className="text-sm text-teal underline">Build a case for a raise</Link></p>
+      <p className="text-center"><Link to="/timeline" className="text-sm text-teal underline">See your lane timeline</Link><span className="text-teal mx-2">|</span><Link to="/case" className="text-sm text-teal underline">Build a case for a raise</Link></p>
 
-      <div className="card p-5">
-        <h2 className="text-xl font-semibold text-center mb-3">Add a job</h2>
+      <div id="add-job" className="card p-6 scroll-mt-32">
+        <h2 className="text-2xl font-semibold text-center mb-4">Add a job</h2>
         {lanes && <QuickAdd lanes={lanes} />}
       </div>
 
@@ -70,7 +78,7 @@ export default function Home() {
             {lanes.map((l) => {
               const total = (l.counts ?? []).reduce((n, c) => n + c.n, 0);
               return (
-                <Link key={l.id} to={`/lanes/${l.id}`} className="card overflow-hidden hover:shadow-md transition-shadow text-center">
+                <Link key={l.id} to={`/lanes/${l.id}`} className="card card-hover overflow-hidden text-center">
                   <div className="h-1.5" style={{ background: l.color }} />
                   <div className="p-4"><div className="font-semibold leading-tight">{l.name}</div><div className="text-xs text-teal mt-1">{total} {total === 1 ? 'entry' : 'entries'}</div></div>
                 </Link>

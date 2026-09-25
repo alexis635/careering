@@ -15,7 +15,7 @@ export default function Hub() {
   const [status, setStatus] = useState('');
   const failed = status.startsWith('Export failed');
   return (
-    <div className="min-h-[calc(100vh-9rem)] flex flex-col items-center justify-center gap-8">
+    <div className="min-h-[calc(100vh-16rem)] flex flex-col items-center justify-center gap-8">
       <nav
         aria-label="Careering"
         className="grid grid-cols-2 grid-rows-2 gap-2 aspect-square"

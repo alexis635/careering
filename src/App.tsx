@@ -24,19 +24,31 @@ function Login({ onDone }: { onDone: () => void }) {
   const [pw, setPw] = useState('');
   const [err, setErr] = useState('');
   return (
-    <div className="min-h-screen grid place-items-center bg-navy px-4">
-      <form
-        className="card p-8 w-full max-w-sm space-y-4"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          try { await api.post('login', { password: pw }); onDone(); } catch (x: any) { setErr(x.message); }
-        }}
-      >
-        <h1 className="text-3xl font-bold">Careering</h1>
-        <input className="input" type="password" placeholder="Password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus />
-        {err && <p className="text-sm text-red-700">{err}</p>}
-        <button className="btn w-full justify-center">Sign in</button>
-      </form>
+    <div className="min-h-screen grid lg:grid-cols-2">
+      <div className="hidden lg:flex flex-col justify-between bg-navy text-beige p-12 relative overflow-hidden">
+        <span aria-hidden="true" className="absolute -right-10 -top-16 font-display text-[28rem] leading-none text-white/[0.04] select-none">C</span>
+        <div className="flex items-center gap-2.5 relative"><span className="grid place-items-center w-9 h-9 rounded-lg bg-beige text-navy font-display font-bold text-xl">C</span><span className="font-display text-xl font-bold">Careering</span></div>
+        <div className="relative">
+          <h2 className="font-display text-5xl font-bold leading-[1.1]">Every move,<br />on purpose.</h2>
+          <p className="mt-4 text-sky max-w-sm">Pursue the next role, thrive in the current one, keep your records safe, and rise on your own terms.</p>
+        </div>
+        <div className="text-xs text-sky/70 relative">Pursue &middot; Thrive &middot; Vault &middot; Rise</div>
+      </div>
+      <div className="grid place-items-center bg-beige px-6 py-12">
+        <form
+          className="w-full max-w-sm space-y-5"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            try { await api.post('login', { password: pw }); onDone(); } catch (x: any) { setErr(x.message); }
+          }}
+        >
+          <div className="lg:hidden flex items-center gap-2.5"><span className="grid place-items-center w-9 h-9 rounded-lg bg-navy text-beige font-display font-bold text-xl">C</span><span className="font-display text-xl font-bold">Careering</span></div>
+          <div><h1 className="text-4xl font-bold">Welcome back</h1><p className="text-teal mt-1">Sign in to pick up where you left off.</p></div>
+          <div><label className="label" htmlFor="pw">Password</label><input id="pw" className="input py-2.5" type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus /></div>
+          {err && <p className="text-sm text-red-700">{err}</p>}
+          <button className="btn btn-lg w-full justify-center">Sign in</button>
+        </form>
+      </div>
     </div>
   );
 }
@@ -105,12 +117,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
-      <header className="bg-navy">
+      <header className="bg-navy sticky top-0 z-30 shadow-[0_1px_0_rgba(255,255,255,.06),0_8px_24px_-16px_rgba(0,0,0,.5)]">
         <div className="max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2 md:grid md:grid-cols-[1fr_auto_1fr] md:h-14 md:py-0">
-          <Link to="/" className="order-1 font-display text-xl font-bold text-white hover:text-sky transition-colors w-fit" title="Home">Careering</Link>
-          <nav className="order-3 w-full justify-center flex gap-1 md:order-2 md:w-auto">
+          <Link to="/" className="order-1 flex items-center gap-2.5 font-display text-xl font-bold text-white hover:text-sky transition-colors w-fit" title="Home"><span className="grid place-items-center w-8 h-8 rounded-lg bg-beige text-navy text-lg leading-none">C</span>Careering</Link>
+          <nav className="order-3 w-full justify-center flex gap-0 md:order-2 md:w-auto md:h-full">
             {AREAS.map(([key, label, to]) => (
-              <Link key={key} to={to} className={`px-3 py-1.5 rounded-lg text-sm ${area === key ? 'bg-white/15 text-white' : 'text-sky hover:text-white'}`}>{label}</Link>
+              <Link key={key} to={to} className={`relative px-4 py-4 text-sm font-medium transition-colors after:absolute after:left-3 after:right-3 after:bottom-0 after:h-0.5 after:rounded-full after:transition-colors ${area === key ? 'text-white after:bg-beige' : 'text-sky hover:text-white after:bg-transparent'}`}>{label}</Link>
             ))}
           </nav>
           <div className="order-2 ml-auto flex items-center justify-end gap-4 md:order-3">
@@ -121,7 +133,7 @@ export default function App() {
         {searchOpen && <SearchBar onClose={() => setSearchOpen(false)} />}
       </header>
       {area === 'pursue' && (
-        <div className="bg-white/70 border-b border-sky/70">
+        <div className="bg-white/80 backdrop-blur border-b border-sky/60 sticky top-14 z-20">
           <nav className="max-w-7xl mx-auto px-4 py-1.5 flex flex-wrap justify-center gap-1">
             {PURSUE_LINKS.map(([to, label]) => <NavLink key={to} to={to} end={to === '/pursue'} className={sub}>{label}</NavLink>)}
           </nav>
@@ -148,6 +160,12 @@ export default function App() {
           <Route path="/archive" element={<ArchivePage />} />
         </Routes>
       </main>
+      <footer className="mt-16 border-t border-sky/60 bg-white/60">
+        <div className="max-w-7xl mx-auto px-4 py-8 flex flex-wrap items-center justify-between gap-4 text-sm text-teal">
+          <div className="flex items-center gap-2"><span className="grid place-items-center w-6 h-6 rounded-md bg-navy text-beige font-display text-sm font-bold">C</span><span className="font-display font-semibold text-navy">Careering</span></div>
+          <nav className="flex gap-5">{AREAS.map(([k, label, to]) => <Link key={k} to={to} className="hover:text-navy">{label}</Link>)}</nav>
+        </div>
+      </footer>
     </div>
   );
 }
