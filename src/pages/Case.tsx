@@ -88,7 +88,7 @@ export default function CaseBuilder() {
     <div className="max-w-3xl mx-auto space-y-6">
       <div>
         <Link to="/rise" className="text-sm text-teal inline-flex items-center gap-1 mb-2"><ArrowLeft size={14} /> Rise</Link>
-        <h1 className="text-4xl font-bold text-center">Build my case</h1>
+        <h1 className="text-5xl font-bold text-center">Build my case</h1>
         <p className="text-sm text-teal text-center mt-1">Turn your logged wins into a case for a promotion, raise, or review. It uses only the wins you choose, in your own voice, and it never invents a number.</p>
       </div>
 

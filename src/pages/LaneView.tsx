@@ -103,7 +103,7 @@ export default function LaneView() {
       <Link to="/lanes" className="text-sm text-teal inline-flex items-center gap-1 mb-2"><ArrowLeft size={14} /> All lanes</Link>
       <div className="flex flex-wrap items-center justify-center gap-3 mb-5">
         <span className="w-3 h-8 rounded" style={{ background: lane.color }} />
-        <h1 className="text-3xl font-bold mr-2">{lane.name}</h1>
+        <h1 className="text-4xl font-bold mr-2">{lane.name}</h1>
         <label className="text-sm flex items-center gap-2 text-teal">
           <input type="checkbox" checked={sortFit} onChange={(e) => setSortFit(e.target.checked)} /> Best fit first
         </label>

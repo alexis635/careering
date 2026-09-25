@@ -4,7 +4,7 @@ export default function Vault() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="text-center">
-        <h1 className="text-4xl font-bold">Vault</h1>
+        <h1 className="text-5xl font-bold">Vault</h1>
         <p className="text-teal mt-1">Your official records, kept private.</p>
       </div>
       <VaultDocs />

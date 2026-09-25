@@ -27,7 +27,7 @@ export default function Search() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <h1 className="text-3xl font-bold mb-1 text-center">{q ? `“${q}”` : 'Search'}</h1>
+      <h1 className="text-4xl font-bold mb-1 text-center">{q ? `“${q}”` : 'Search'}</h1>
       <p className="text-sm text-teal mb-4 text-center">{job ? 'Showing this job first, then everything else.' : 'Searching everything: jobs, notes, documents, emails, and the Library.'}</p>
       {q.trim().length >= 2 && (
         <div className="card p-4 mb-5">

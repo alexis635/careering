@@ -42,7 +42,7 @@ export default function Thrive() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="text-center">
-        <h1 className="text-4xl font-bold">Thrive</h1>
+        <h1 className="text-5xl font-bold">Thrive</h1>
         <p className="text-teal mt-1">A home for each job you are in now.</p>
       </div>
 

@@ -41,7 +41,7 @@ export default function Mail() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <h1 className="text-4xl font-bold text-center">Mail</h1>
+      <h1 className="text-5xl font-bold text-center">Mail</h1>
       <p className="text-sm text-teal text-center mt-1 mb-5">Everything Careering has sent, plus the replies to it, across all your jobs.</p>
 
       <div className="flex flex-col items-center gap-3 mb-5">

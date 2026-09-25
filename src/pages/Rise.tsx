@@ -15,7 +15,7 @@ export default function Rise() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="text-center mb-4">
-        <h1 className="text-4xl font-bold">Rise</h1>
+        <h1 className="text-5xl font-bold">Rise</h1>
         <p className="text-teal mt-1">The evidence and the history of your growth.</p>
       </div>
       <div className="flex justify-center gap-1 border-b border-sky mb-5 overflow-x-auto overflow-y-hidden">

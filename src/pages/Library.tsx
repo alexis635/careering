@@ -55,7 +55,7 @@ export default function Library() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <h1 className="text-3xl font-bold mb-4 text-center">Library</h1>
+      <h1 className="text-4xl font-bold mb-4 text-center">Library</h1>
       <div className="flex justify-center gap-1 border-b border-sky mb-4 overflow-x-auto overflow-y-hidden">
         {KINDS.map((k) => (
           <button key={k.key} onClick={() => setKind(k.key)} className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${kind === k.key ? 'border-navy font-semibold' : 'border-transparent text-teal hover:text-navy'}`}>{k.label}</button>

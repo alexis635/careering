@@ -40,7 +40,7 @@ export default function Lanes() {
   return (
     <div>
       <div className="flex flex-col items-center gap-3 mb-6">
-        <h1 className="text-4xl font-bold">Lanes</h1>
+        <h1 className="text-5xl font-bold">Lanes</h1>
         <button className="btn" onClick={() => setAdding((v) => !v)}><Plus size={16} /> New lane</button>
       </div>
 

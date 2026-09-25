@@ -82,7 +82,7 @@ export default function ResumeBuilder() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="text-center">
-        <h1 className="text-4xl font-bold">Resume builder</h1>
+        <h1 className="text-5xl font-bold">Resume builder</h1>
         <p className="text-sm text-teal mt-1">Describe the resume you need. It writes one from your Library, and you can refine it and export the PDF. No job required.</p>
       </div>
 

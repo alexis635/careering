@@ -171,7 +171,7 @@ export default function JobDetail() {
       <Link to={`/lanes/${job.lane_id}`} className="text-sm text-teal inline-flex items-center gap-1 mb-2"><ArrowLeft size={14} /> Back to lane</Link>
       <div className="flex flex-wrap items-center justify-center gap-3 mb-1 text-center">
         <div className="basis-full">
-          <h1 className="text-3xl font-bold">{job.company || 'Untitled'}</h1>
+          <h1 className="text-4xl font-bold">{job.company || 'Untitled'}</h1>
           <p className="text-teal">{job.role_title}</p>
         </div>
         {job.source_link && <a className="btn-ghost" href={job.source_link} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Posting</a>}
