@@ -7,7 +7,7 @@ export function PageHero({ icon: Icon, title, blurb, children }: { icon: LucideI
     <section className="relative overflow-hidden rounded-3xl bg-navy text-beige px-6 py-10 sm:px-10 sm:py-12 text-center">
       <span aria-hidden="true" className="absolute -right-4 -top-16 font-display text-[18rem] leading-none text-white/[0.04] select-none">{title[0]}</span>
       <span className="relative mx-auto grid place-items-center w-11 h-11 rounded-xl bg-white/10 text-sky"><Icon size={22} aria-hidden="true" /></span>
-      <h1 className="relative text-5xl sm:text-6xl font-extrabold mt-3 leading-[1.05]">{title}</h1>
+      <h1 className="relative text-4xl sm:text-6xl font-extrabold mt-3 leading-[1.05]">{title}</h1>
       <p className="relative text-sky text-lg mt-3 max-w-xl mx-auto">{blurb}</p>
       {children && <div className="relative mt-6 flex flex-wrap justify-center gap-3">{children}</div>}
     </section>

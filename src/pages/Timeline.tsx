@@ -40,7 +40,7 @@ export default function Timeline() {
 
   return (
     <div className="max-w-6xl mx-auto">
-      <h1 className="text-5xl font-bold text-center">Timeline</h1>
+      <h1 className="text-4xl sm:text-5xl font-bold text-center">Timeline</h1>
       <p className="text-sm text-teal text-center mt-1 mb-6">Each lane runs on its own timeline. Set the start and target dates on a lane with its Edit button.</p>
 
       {rows.length === 0 && <p className="text-center text-teal text-sm">No lanes yet. <Link to="/lanes" className="underline">Create one</Link>.</p>}

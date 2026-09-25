@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Route, Routes, useLocation, useMatch, useNavigate } from 'react-router-dom';
-import { Search as SearchIcon, X } from 'lucide-react';
+import { Compass, Lock, Search as SearchIcon, Sprout, TrendingUp, X } from 'lucide-react';
 import { api } from './api';
 import Hub from './pages/Hub';
 import Home from './pages/Home';
@@ -88,6 +88,7 @@ function areaOf(path: string) {
   if (path.startsWith('/rise') || path.startsWith('/case')) return 'rise';
   return 'pursue';
 }
+const AREA_ICONS = { pursue: Compass, thrive: Sprout, vault: Lock, rise: TrendingUp } as const;
 const PURSUE_LINKS = [['/pursue', 'Overview'], ['/lanes', 'Lanes'], ['/timeline', 'Timeline'], ['/weekly', 'Week'], ['/mail', 'Mail'], ['/resume', 'Resume'], ['/library', 'Library']] as const;
 
 export default function App() {
@@ -118,14 +119,14 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-navy sticky top-0 z-30 shadow-[0_1px_0_rgba(255,255,255,.06),0_8px_24px_-16px_rgba(0,0,0,.5)]">
-        <div className="max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2 md:grid md:grid-cols-[1fr_auto_1fr] md:h-14 md:py-0">
+        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-x-4 md:grid md:grid-cols-[1fr_auto_1fr]">
           <Link to="/" className="order-1 flex items-center gap-2.5 font-display text-xl font-bold text-white hover:text-sky transition-colors w-fit" title="Home"><span className="grid place-items-center w-8 h-8 rounded-lg bg-beige text-navy text-lg leading-none">C</span>Careering</Link>
-          <nav className="order-3 w-full justify-center flex gap-0 md:order-2 md:w-auto md:h-full">
+          <nav className="hidden md:flex order-2 justify-center gap-0 h-full">
             {AREAS.map(([key, label, to]) => (
               <Link key={key} to={to} className={`relative px-4 py-4 text-sm font-medium transition-colors after:absolute after:left-3 after:right-3 after:bottom-0 after:h-0.5 after:rounded-full after:transition-colors ${area === key ? 'text-white after:bg-beige' : 'text-sky hover:text-white after:bg-transparent'}`}>{label}</Link>
             ))}
           </nav>
-          <div className="order-2 ml-auto flex items-center justify-end gap-4 md:order-3">
+          <div className="order-3 ml-auto flex items-center justify-end gap-4 md:order-3">
             <button onClick={() => setSearchOpen((v) => !v)} aria-label="Search" title="Search (press /)" className={`rounded-lg p-1.5 ${searchOpen ? 'bg-white/15 text-white' : 'text-sky hover:text-white'}`}><SearchIcon size={18} /></button>
             <button className="text-sm text-sky hover:text-white whitespace-nowrap" onClick={async () => { await api.post('logout'); setAuthed(false); }}>Sign out</button>
           </div>
@@ -134,7 +135,7 @@ export default function App() {
       </header>
       {area === 'pursue' && (
         <div className="bg-white/80 backdrop-blur border-b border-sky/60 sticky top-14 z-20">
-          <nav className="max-w-7xl mx-auto px-4 py-1.5 flex flex-wrap justify-center gap-1">
+          <nav className="max-w-7xl mx-auto px-4 py-1.5 flex flex-nowrap overflow-x-auto md:justify-center gap-1">
             {PURSUE_LINKS.map(([to, label]) => <NavLink key={to} to={to} end={to === '/pursue'} className={sub}>{label}</NavLink>)}
           </nav>
         </div>
@@ -160,12 +161,22 @@ export default function App() {
           <Route path="/archive" element={<ArchivePage />} />
         </Routes>
       </main>
-      <footer className="mt-12 border-t border-sky/60 bg-white/60">
+      <footer className="mt-12 mb-16 md:mb-0 border-t border-sky/60 bg-white/60">
         <div className="max-w-7xl mx-auto px-4 py-8 flex flex-wrap items-center justify-between gap-4 text-sm text-teal">
           <div className="flex items-center gap-2"><span className="grid place-items-center w-6 h-6 rounded-md bg-navy text-beige font-display text-sm font-bold">C</span><span className="font-display font-semibold text-navy">Careering</span></div>
           <nav className="flex gap-5">{AREAS.map(([k, label, to]) => <Link key={k} to={to} className="hover:text-navy">{label}</Link>)}</nav>
         </div>
       </footer>
+      <nav aria-label="Areas" className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-navy border-t border-white/10 grid grid-cols-4 pb-[env(safe-area-inset-bottom)]">
+        {AREAS.map(([key, label, to]) => {
+          const Icon = AREA_ICONS[key];
+          return (
+            <Link key={key} to={to} className={`flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${area === key ? 'text-white' : 'text-sky/70'}`}>
+              <Icon size={20} aria-hidden="true" />{label}
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }

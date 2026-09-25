@@ -42,7 +42,7 @@ export default function Home() {
       <section className="relative overflow-hidden rounded-3xl bg-navy text-beige px-6 py-12 sm:px-12 sm:py-16 text-center">
         <span aria-hidden="true" className="absolute -right-6 -top-20 font-display text-[22rem] leading-none text-white/[0.04] select-none">C</span>
         <p className="relative text-sm uppercase tracking-[0.2em] text-sky">{format(new Date(), 'EEEE, MMMM d')}</p>
-        <h1 className="relative text-5xl sm:text-6xl font-extrabold mt-3 leading-[1.05]">{greeting()}</h1>
+        <h1 className="relative text-4xl sm:text-6xl font-extrabold mt-3 leading-[1.05]">{greeting()}</h1>
         <p className="relative text-sky text-lg mt-4 max-w-xl mx-auto">{summary}</p>
         <div className="relative mt-8 flex flex-wrap justify-center gap-3">
           <a href="#add-job" className="btn btn-lg !bg-beige !text-navy hover:!bg-white">Add a job</a>

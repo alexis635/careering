@@ -17,7 +17,7 @@ export default function Hub() {
   return (
     <div className="min-h-[calc(100vh-16rem)] flex flex-col items-center justify-center gap-8">
       <div className="text-center">
-        <h1 className="text-5xl sm:text-6xl font-extrabold leading-[1.05]">Every move, on purpose.</h1>
+        <h1 className="text-4xl sm:text-6xl font-extrabold leading-[1.05]">Every move, on purpose.</h1>
         <p className="text-teal text-lg mt-3">Four places to run your whole career.</p>
       </div>
       <nav

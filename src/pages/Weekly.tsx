@@ -47,7 +47,7 @@ export default function Weekly() {
   return (
     <div className="max-w-3xl mx-auto space-y-5">
       <div className="text-center">
-        <h1 className="text-5xl font-bold">Your week</h1>
+        <h1 className="text-4xl sm:text-5xl font-bold">Your week</h1>
         <p className="text-teal mt-1">The last 7 days, and what needs you next.</p>
       </div>
 

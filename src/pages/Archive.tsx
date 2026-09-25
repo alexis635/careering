@@ -41,7 +41,7 @@ export default function ArchivePage() {
     <div className="max-w-3xl mx-auto space-y-8">
       <div>
         <Link to="/lanes" className="text-sm text-teal inline-flex items-center gap-1 mb-2"><ArrowLeft size={14} /> Lanes</Link>
-        <h1 className="text-5xl font-bold text-center">Archive & Trash</h1>
+        <h1 className="text-4xl sm:text-5xl font-bold text-center">Archive & Trash</h1>
         <p className="text-sm text-teal text-center mt-1">Nothing is ever permanently deleted. Everything here can be restored with all its jobs, documents, notes, and emails.</p>
       </div>
 
