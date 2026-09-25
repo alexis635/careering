@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../api';
 import type { Deck } from '../types';
+import { Presentation } from 'lucide-react';
+import { EmptyState } from './ui';
 
 /** Rise > Decks: every deck across all jobs, plus Recently deleted. Building and editing happens on the job. */
 export default function DecksList() {
@@ -25,7 +27,7 @@ export default function DecksList() {
   );
   return (
     <div className="space-y-3 max-w-2xl mx-auto">
-      {decks.length === 0 && <div className="card p-6 text-center text-sm text-teal">No decks yet. Open a job and choose the Interview deck tab to build one.</div>}
+      {decks.length === 0 && <EmptyState icon={Presentation} title="No decks yet">Open a job and choose the Interview deck tab to build one.</EmptyState>}
       {decks.map((d) => row(d, false))}
       {gone.length > 0 && (
         <details className="pt-2"><summary className="text-sm text-teal cursor-pointer">Recently deleted ({gone.length})</summary>

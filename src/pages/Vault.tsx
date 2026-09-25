@@ -1,12 +1,11 @@
 import VaultDocs from '../components/VaultDocs';
+import { Lock } from 'lucide-react';
+import { PageHero } from '../components/ui';
 
 export default function Vault() {
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <div className="text-center">
-        <h1 className="text-5xl font-bold">Vault</h1>
-        <p className="text-teal mt-1">Your official records, kept private.</p>
-      </div>
+    <div className="max-w-4xl mx-auto space-y-8">
+      <PageHero icon={Lock} title="Vault" blurb="Your official records, kept private." />
       <VaultDocs />
       <div className="card p-5 space-y-2">
         <h2 className="text-lg font-semibold text-center">Coming to the Vault</h2>

@@ -5,6 +5,8 @@ import { ExternalLink, Paperclip, Plus, RotateCcw, Sparkles, Trash2 } from 'luci
 import { api } from '../api';
 import { MAX_UPLOAD, kb, readFile } from '../lib/files';
 import type { LibItem, VaultDoc, Win } from '../types';
+import { Trophy } from 'lucide-react';
+import { EmptyState } from './ui';
 
 const CATS: Record<string, string> = { revenue: 'Revenue and growth', leadership: 'Leadership', recognition: 'Recognition', project: 'Project or launch', growth: 'Skills and growth' };
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -159,7 +161,7 @@ export default function Wins() {
             )}
           </div>
         ))}
-        {wins && shown.length === 0 && <p className="text-sm text-teal text-center">{wins.length ? 'No wins match those filters.' : 'No wins yet. Add your first one, even a small one.'}</p>}
+        {wins && shown.length === 0 && <EmptyState icon={Trophy} title={wins.length ? 'No wins match those filters' : 'No wins yet'}>{wins.length ? 'Try clearing a filter.' : 'Add your first one, even a small one.'}</EmptyState>}
       </div>
 
       {gone.length > 0 && (

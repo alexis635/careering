@@ -4,6 +4,8 @@ import { format } from 'date-fns';
 import { api } from '../api';
 import type { Role, Workspace } from '../types';
 import { JOB_TYPES } from './Workspace';
+import { PageHero, EmptyState, CardSkeletons } from '../components/ui';
+import { Sprout, Briefcase } from 'lucide-react';
 
 const fmt = (d: string | null) => (d ? format(new Date(d + 'T00:00:00'), 'MMM yyyy') : '');
 
@@ -41,21 +43,17 @@ export default function Thrive() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div className="text-center">
-        <h1 className="text-5xl font-bold">Thrive</h1>
-        <p className="text-teal mt-1">A home for each job you are in now.</p>
-      </div>
+      <PageHero icon={Sprout} title="Thrive" blurb="A home for each job you are in now.">
+        {!adding && <button className="btn btn-lg !bg-beige !text-navy hover:!bg-white" onClick={() => setAdding(true)}>Start a workspace</button>}
+      </PageHero>
+      {!list && <CardSkeletons n={2} className="h-28" />}
 
       {list && active.length === 0 && !adding && (
-        <div className="card p-6 text-center space-y-2">
-          <p className="text-sm">No workspaces yet. Start one for any job you hold, including several at once. Each keeps its own tasks, goals, notes, and people, and wraps up cleanly when the job ends.</p>
-        </div>
+        <EmptyState icon={Briefcase} title="No workspaces yet">Start one for any job you hold, including several at once. Each keeps its own tasks, goals, notes, and people, and wraps up cleanly when the job ends.</EmptyState>
       )}
       <div className="grid gap-3 sm:grid-cols-2">{active.map(card)}</div>
 
-      {!adding ? (
-        <div className="text-center"><button className="btn" onClick={() => setAdding(true)}>Start a workspace</button></div>
-      ) : (
+      {!adding ? null : (
         <div className="card p-5 space-y-3">
           {free.length > 0 && (
             <select className="input" value={form.role_id} onChange={(e) => setForm({ ...form, role_id: e.target.value })}>

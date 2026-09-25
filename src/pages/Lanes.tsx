@@ -4,6 +4,8 @@ import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { Plus } from 'lucide-react';
 import { api } from '../api';
 import { LANE_COLORS, stageInfo, type Lane } from '../types';
+import { Route } from 'lucide-react';
+import { EmptyState, CardSkeletons } from '../components/ui';
 
 function countdown(d: string | null) {
   if (!d) return null;
@@ -62,15 +64,16 @@ export default function Lanes() {
         </form>
       )}
 
+      {!lanes && <div className="max-w-5xl mx-auto"><CardSkeletons n={3} className="h-28" /></div>}
       {lanes && lanes.length === 0 && !adding && (
-        <p className="text-teal text-center">No lanes yet. A lane is a parallel career track, like "Bridge · Remote" or "LA · Teaching".</p>
+        <EmptyState icon={Route} title="No lanes yet">A lane is a parallel career track, like "Bridge · Remote" or "LA · Teaching".</EmptyState>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 max-w-5xl mx-auto">
         {lanes?.map((l) => {
           const total = l.counts?.reduce((s, c) => s + c.n, 0) ?? 0;
           return (
-            <Link key={l.id} to={`/lanes/${l.id}`} className="card overflow-hidden hover:shadow-md transition-shadow">
+            <Link key={l.id} to={`/lanes/${l.id}`} className="card card-hover overflow-hidden">
               <div className="h-2" style={{ background: l.color }} />
               <div className="p-5">
                 <div className="flex items-start justify-center gap-2 text-center">

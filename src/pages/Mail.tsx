@@ -4,6 +4,8 @@ import { format } from 'date-fns';
 import { Paperclip, RefreshCw } from 'lucide-react';
 import { api } from '../api';
 import type { MailItem } from '../types';
+import { Inbox } from 'lucide-react';
+import { EmptyState, CardSkeletons } from '../components/ui';
 
 const BOXES = [
   { key: 'all', label: 'All mail' },
@@ -55,10 +57,11 @@ export default function Mail() {
         {msg && <p className="text-sm text-teal">{msg}</p>}
       </div>
 
-      {items && items.length === 0 && <p className="text-center text-teal text-sm">{box === 'drafts' ? 'No outreach drafts yet.' : 'No mail yet.'}</p>}
+      {!items && <CardSkeletons n={3} className="h-20" />}
+      {items && items.length === 0 && <EmptyState icon={Inbox} title={box === 'drafts' ? 'No outreach drafts yet' : 'No mail yet'}>{box === 'drafts' ? 'Open a job and draft outreach to a contact. Drafts land here.' : 'Emails you send from a job, and the replies to them, show up here.'}</EmptyState>}
       <div className="space-y-2">
         {items?.map((m) => (
-          <Link key={`${m.direction}${m.id}`} to={`/jobs/${m.job_id}?tab=${m.direction === 'draft' ? 'Documents' : 'Emails'}`} className="card p-3.5 block hover:shadow-md transition-shadow">
+          <Link key={`${m.direction}${m.id}`} to={`/jobs/${m.job_id}?tab=${m.direction === 'draft' ? 'Documents' : 'Emails'}`} className="card card-hover p-3.5 block">
             <div className="flex flex-wrap items-center gap-2 text-xs text-teal mb-0.5">
               <span className={`uppercase tracking-wide font-medium rounded px-1.5 py-0.5 ${BADGE[m.direction]}`}>{NAME[m.direction]}</span>
               <span className="font-medium text-navy">{m.label}</span>

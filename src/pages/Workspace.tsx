@@ -7,6 +7,7 @@ import { api } from '../api';
 import { MAX_UPLOAD, kb, readFile } from '../lib/files';
 import LessonPlanner, { STANDARD_OPTIONS } from '../components/LessonPlanner';
 import type { Win, Workspace, WsItem } from '../types';
+import { CardSkeletons } from '../components/ui';
 
 const day = (d: string | null) => (d ? format(new Date(d + 'T00:00:00'), 'MMM d, yyyy') : '');
 const today = () => format(new Date(), 'yyyy-MM-dd');
@@ -77,7 +78,7 @@ export default function WorkspacePage() {
   const loadWins = (w: Workspace) => api.get<Win[]>('wins').then((all) => setWins(all.filter((x) => x.employer === w.employer))).catch(() => {});
   useEffect(() => { load().then(() => {}); }, [id]);
   useEffect(() => { if (ws && sec === 'wins') loadWins(ws); }, [sec, ws?.employer]);
-  if (!ws) return <div className="text-teal text-center">Loading…</div>;
+  if (!ws) return <div className="max-w-3xl mx-auto p-6"><CardSkeletons n={3} className="h-24" /></div>;
   const items = ws.items ?? [];
   const locked = !!ws.wrapped_up_at;
   const modules = BY_TYPE[ws.job_type] ?? [];

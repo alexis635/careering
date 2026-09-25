@@ -3,6 +3,8 @@ import { differenceInMonths, format, parseISO } from 'date-fns';
 import { Eye, EyeOff, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import type { CompEntry, Role } from '../types';
+import { Briefcase } from 'lucide-react';
+import { EmptyState } from './ui';
 
 const KINDS: Record<string, string> = { start: 'Starting pay', raise: 'Raise', promotion: 'Promotion', bonus: 'Bonus', other: 'Other' };
 const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
@@ -139,7 +141,7 @@ export default function RolesPay() {
               : <button className="text-xs text-teal underline" onClick={() => { setPayFor(r.id); setErr(''); }}>Add a pay entry</button>}
           </div>
         ))}
-        {roles && roles.length === 0 && <p className="text-sm text-teal text-center">No roles yet. Add your current one to start.</p>}
+        {roles && roles.length === 0 && <EmptyState icon={Briefcase} title="No roles yet">Add your current one to start your history.</EmptyState>}
       </div>
 
       {gone.length + goneComp.length > 0 && (
