@@ -97,6 +97,7 @@ const statements = [
     value JSONB NOT NULL
   )`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS posting_parsed JSONB`,
+  `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS company_domain TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE job_contacts ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS fit TEXT`,
   `ALTER TABLE job_emails ADD COLUMN IF NOT EXISTS attachments JSONB NOT NULL DEFAULT '[]'`,

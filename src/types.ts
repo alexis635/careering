@@ -14,7 +14,7 @@ export interface Job {
   id: number; lane_id: number; type: 'application' | 'logistics'; company: string; role_title: string;
   source_link: string; stage: Stage; closed_outcome: string | null; salary_range: string; location: string;
   remote_type: string; applied_date: string | null; deadline: string | null; contact_person: string;
-  contact_notes: string; posting_text: string; match_notes: string; interview_prep: string;
+  contact_notes: string; company_domain?: string; posting_text: string; match_notes: string; interview_prep: string;
   resume_version_id: number | null; updated_at: string;
   fit: 'strong' | 'moderate' | 'weak' | null;
   posting_parsed: { summary?: string; requirements?: string[]; nice_to_haves?: string[]; keywords?: string[] } | null;

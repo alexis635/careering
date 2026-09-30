@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ArrowLeft, Download, ExternalLink, Mail, Paperclip, Plus, Sparkles, Trash2, X } from 'lucide-react';
@@ -41,6 +41,14 @@ function TextBlock({ label, value, onSave, rows = 8, placeholder }: { label: str
       <textarea className="input font-mono text-[13px] leading-relaxed" rows={rows} value={v} placeholder={placeholder} onChange={(e) => setV(e.target.value)} onBlur={() => v !== value && onSave(v)} />
     </div>
   );
+}
+
+function CompanyLogo({ domain, name }: { domain?: string; name: string }) {
+  const [bad, setBad] = useState(false);
+  useEffect(() => setBad(false), [domain]);
+  const box = 'grid place-items-center w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white shrink-0 overflow-hidden shadow-md';
+  if (domain && !bad) return <div className={box}><img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`} alt="" className="w-10 h-10 sm:w-12 sm:h-12 object-contain" onError={() => setBad(true)} /></div>;
+  return <div className={`${box} font-display text-3xl font-bold text-navy`}>{(name || '?').trim().charAt(0).toUpperCase()}</div>;
 }
 
 export default function JobDetail() {
@@ -93,6 +101,13 @@ export default function JobDetail() {
   };
   useEffect(() => { api.get<{ connected: boolean; email: string | null }>('gmail/status').then(setGmail).catch(() => setGmail({ connected: false, email: null })); }, []);
   useEffect(() => { api.get<Job>(`jobs/${id}`).then(setJob); loadKids(); }, [id]);
+  const logoTried = useRef<number | null>(null);
+  useEffect(() => {
+    // find the company website once, in the background, so the logo appears without any uploading
+    if (!job || job.company_domain || !job.company || job.type === 'logistics' || logoTried.current === job.id) return;
+    logoTried.current = job.id;
+    api.post<Job>(`jobs/${job.id}/logo`).then((r) => setJob((j) => (j && j.id === r.id ? { ...j, company_domain: r.company_domain } : j))).catch(() => {});
+  }, [job?.id, job?.company]);
   useEffect(() => { if (job?.lane_id) api.get<Lane>(`lanes/${job.lane_id}`).then(setLane).catch(() => {}); }, [job?.lane_id]);
   useEffect(() => {
     api.get<Record<string, string>>('settings').then((r) => setPortfolio(r.portfolio_url ?? '')).catch(() => {});
@@ -172,26 +187,39 @@ export default function JobDetail() {
       else { loadKids(); setTab('Documents'); setOpenDoc(out.id); }
     } catch (e: any) { setAiErr(e.message); } finally { setBusy(null); }
   }
+  /** Fetch (if needed), read, and compare in one go. */
+  async function analyze() {
+    setBusy('analyze'); setAiErr('');
+    try {
+      let cur = job!;
+      if (!cur.posting_text.trim() && cur.source_link) cur = await api.post<Job>('ai/fetch', { job_id: Number(id) });
+      if (!cur.posting_text.trim()) throw new Error('Paste the job posting first (under Full posting), then analyze.');
+      cur = await api.post<Job>('ai/parse', { job_id: Number(id) });
+      cur = await api.post<Job>('ai/match', { job_id: Number(id) });
+      setJob(cur);
+    } catch (e: any) { setAiErr(e.message); } finally { setBusy(null); }
+  }
   const save = async (patch: Partial<Job>) => setJob(await api.patch<Job>(`jobs/${id}`, patch));
   const logistics = job.type === 'logistics';
 
   return (
     <div className="max-w-6xl mx-auto">
       <Link to={`/lanes/${job.lane_id}`} className="text-sm text-teal inline-flex items-center gap-1 mb-3"><ArrowLeft size={14} /> Back to {lane?.name ?? 'lane'}</Link>
-      <div className="card p-5 sm:p-6 mb-5 flex flex-wrap items-start gap-x-6 gap-y-3">
-        <div className="flex-1 min-w-64">
-          <h1 className="text-3xl sm:text-4xl font-bold leading-tight">{job.company || 'Untitled'}</h1>
-          <p className="text-teal mt-0.5">{job.role_title}</p>
+      <div className="rounded-2xl bg-navy text-white p-5 sm:p-6 mb-5 flex flex-wrap items-center gap-x-5 gap-y-3 shadow-[0_8px_24px_-12px_rgba(47,64,88,.5)]">
+        <CompanyLogo domain={job.company_domain} name={job.company} />
+        <div className="flex-1 min-w-56">
+          <h1 className="text-3xl sm:text-4xl font-bold leading-tight text-white">{job.company || 'Untitled'}</h1>
+          <p className="text-sky mt-0.5">{job.role_title}</p>
           <div className="flex flex-wrap items-center gap-2 mt-3 text-xs">
-            <span className="rounded-full bg-navy text-white px-2.5 py-1 font-medium">{job.closed_outcome ? stageInfo(lane).outcome(job.closed_outcome) : stageInfo(lane).label(job.stage)}</span>
+            <span className="rounded-full bg-beige text-navy px-2.5 py-1 font-semibold">{job.closed_outcome ? stageInfo(lane).outcome(job.closed_outcome) : stageInfo(lane).label(job.stage)}</span>
             {job.fit && <FitBadge fit={job.fit} />}
-            {job.deadline && <span className="rounded-full bg-beige border border-sky px-2.5 py-1 text-teal">Deadline {format(new Date(job.deadline.slice(0, 10) + 'T12:00:00'), 'MMM d')}</span>}
-            {[job.location, job.remote_type].filter(Boolean).length > 0 && <span className="text-teal">{[job.location, job.remote_type].filter(Boolean).join(' · ')}</span>}
+            {job.deadline && <span className="rounded-full bg-white/15 px-2.5 py-1 text-white">Deadline {format(new Date(job.deadline.slice(0, 10) + 'T12:00:00'), 'MMM d')}</span>}
+            {[job.location, job.remote_type].filter(Boolean).length > 0 && <span className="text-sky">{[job.location, job.remote_type].filter(Boolean).join(' · ')}</span>}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {job.source_link && <a className="btn-ghost" href={job.source_link} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Posting</a>}
-          <button className="btn-ghost" title="Move to Trash (restorable)" onClick={async () => { if (confirm('Move this job to the Trash?\n\nEverything in it stays saved, and you can restore it anytime from Archive & Trash.')) { await api.del(`jobs/${id}`); nav(`/lanes/${job.lane_id}`); } }}><Trash2 size={14} /></button>
+          {job.source_link && <a className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-sm text-white transition" href={job.source_link} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Posting</a>}
+          <button className="rounded-lg bg-white/10 hover:bg-white/20 p-2 text-white transition" title="Move to Trash (restorable)" onClick={async () => { if (confirm('Move this job to the Trash?\n\nEverything in it stays saved, and you can restore it anytime from Archive & Trash.')) { await api.del(`jobs/${id}`); nav(`/lanes/${job.lane_id}`); } }}><Trash2 size={14} /></button>
         </div>
       </div>
 
@@ -202,14 +230,14 @@ export default function JobDetail() {
             <button key={t} onClick={() => setTab(t)} className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap ${tab === t ? 'bg-navy text-white' : 'text-teal bg-white border border-sky/60'}`}>{t}</button>
           ))}
         </div>
-        <div className="hidden md:block card p-2 space-y-3">
+        <div className="hidden md:block rounded-2xl bg-sky/60 border border-sky p-2 space-y-3">
           {NAV.map((g) => (
             <div key={g.title}>
-              <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-widest text-teal/80">{g.title}</div>
+              <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-widest text-teal">{g.title}</div>
               {g.tabs.map(({ key, label }) => {
                 const n = key === 'Contacts' ? contacts.length : key === 'Documents' ? docs.filter((d) => d.kind !== 'interview_prep').length : key === 'Next Actions' ? actions.filter((a) => !a.done).length : 0;
                 return (
-                  <button key={key} onClick={() => setTab(key)} className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm text-left transition ${tab === key ? 'bg-navy text-white font-medium' : 'text-navy hover:bg-sky/40'}`}>
+                  <button key={key} onClick={() => setTab(key)} className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm text-left transition ${tab === key ? 'bg-navy text-white font-medium shadow-sm' : 'text-navy hover:bg-white/60'}`}>
                     {label}
                     {n > 0 && <span className={`text-xs ${tab === key ? 'text-sky' : 'text-teal'}`}>{n}</span>}
                   </button>
@@ -243,31 +271,42 @@ export default function JobDetail() {
           </div>
           </details>
           {!logistics && (
-            <div className="card p-5 space-y-4">
-              <TextBlock label="Job posting" value={job.posting_text} onSave={(v) => save({ posting_text: v })} rows={10} placeholder="Paste the full posting here. It powers matching and drafting." />
-              <div className="flex flex-wrap gap-2 items-center">
-                {job.source_link && <button className="btn-ghost" disabled={!!busy} onClick={() => ai('fetch')}>{busy === 'fetch' ? 'Fetching…' : 'Fetch posting from link'}</button>}
-                <button className="btn" disabled={!!busy} onClick={() => ai('parse')}><Sparkles size={14} /> {busy === 'parse' ? 'Reading…' : 'Parse posting'}</button>
-                <button className="btn" disabled={!!busy} onClick={() => ai('match')}><Sparkles size={14} /> {busy === 'match' ? 'Comparing…' : 'Match check'}</button>
-                {aiErr && <span className="text-sm text-red-700">{aiErr}</span>}
-              </div>
-              {job.posting_parsed && (
-                <div className="rounded-lg bg-beige p-4 text-sm space-y-2">
-                  {job.posting_parsed.summary && <p>{job.posting_parsed.summary}</p>}
-                  {!!job.posting_parsed.requirements?.length && <div><span className="label">Requirements</span><ul className="list-disc pl-5">{job.posting_parsed.requirements.map((r, i) => <li key={i}>{r}</li>)}</ul></div>}
-                  {!!job.posting_parsed.keywords?.length && <div className="flex flex-wrap gap-1.5">{job.posting_parsed.keywords.map((k) => <span key={k} className="bg-sky/70 rounded px-2 py-0.5 text-xs">{k}</span>)}</div>}
+            <>
+              <div className="card p-5 space-y-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <button className="btn" disabled={!!busy} onClick={analyze}><Sparkles size={14} /> {busy === 'analyze' ? 'Reading the posting…' : job.posting_parsed ? 'Analyze again' : 'Analyze this job'}</button>
+                  <span className="text-xs text-teal">Gets the posting from the link if needed, pulls out the requirements, and checks the fit.</span>
+                  {aiErr && <span className="text-sm text-red-700">{aiErr}</span>}
                 </div>
-              )}
-              <div className="flex items-center gap-3">
-                <label className="label mb-0">Fit</label>
-                <select className="input w-44" value={job.fit ?? ''} onChange={(e) => save({ fit: (e.target.value || null) as Job['fit'] })}>
-                  <option value="">Not rated</option><option value="strong">Strong</option><option value="moderate">Moderate</option><option value="weak">Weak</option>
-                </select>
-                <FitBadge fit={job.fit} />
-                <span className="text-xs text-teal">Set by Match check; change it any time.</span>
+                {job.posting_parsed && (
+                  <div className="rounded-xl bg-beige p-4 text-sm space-y-3">
+                    {job.posting_parsed.summary && <p className="text-[15px] leading-relaxed">{job.posting_parsed.summary}</p>}
+                    {!!job.posting_parsed.requirements?.length && <div><span className="label">Requirements</span><ul className="list-disc pl-5 space-y-0.5">{job.posting_parsed.requirements.map((r, i) => <li key={i}>{r}</li>)}</ul></div>}
+                    {!!job.posting_parsed.keywords?.length && <div className="flex flex-wrap gap-1.5">{job.posting_parsed.keywords.map((k) => <span key={k} className="bg-sky/70 rounded px-2 py-0.5 text-xs">{k}</span>)}</div>}
+                  </div>
+                )}
               </div>
-              <TextBlock label="Match notes" value={job.match_notes} onSave={(v) => save({ match_notes: v })} rows={8} />
-            </div>
+              <div className="card p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <label className="label mb-0">Fit</label>
+                  <select className="input w-44" value={job.fit ?? ''} onChange={(e) => save({ fit: (e.target.value || null) as Job['fit'] })}>
+                    <option value="">Not rated</option><option value="strong">Strong</option><option value="moderate">Moderate</option><option value="weak">Weak</option>
+                  </select>
+                  <FitBadge fit={job.fit} />
+                  <span className="text-xs text-teal">Set by the analysis; change it any time.</span>
+                </div>
+                <TextBlock label="Match notes" value={job.match_notes} onSave={(v) => save({ match_notes: v })} rows={8} />
+              </div>
+              <details className="card group" open={!job.posting_text.trim()}>
+                <summary className="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between text-sm font-medium">
+                  <span>Full posting</span>
+                  <span className="text-xs text-teal group-open:hidden">Show</span><span className="text-xs text-teal hidden group-open:inline">Hide</span>
+                </summary>
+                <div className="px-5 pb-5 space-y-3">
+                  <TextBlock label="Job posting" value={job.posting_text} onSave={(v) => save({ posting_text: v })} rows={10} placeholder="Paste the full posting here. It powers matching and drafting." />
+                </div>
+              </details>
+            </>
           )}
         </div>
       )}

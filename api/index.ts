@@ -10,6 +10,7 @@ import { mailList } from '../lib/mail.js';
 import { home } from '../lib/home.js';
 import * as vault from '../lib/vault.js';
 import { hunterFind, hunterUsage } from '../lib/hunter.js';
+import { resolveLogo } from '../lib/logo.js';
 import * as cases from '../lib/cases.js';
 import * as roles from '../lib/roles.js';
 import * as decks from '../lib/decks.js';
@@ -131,6 +132,7 @@ export async function route(c: Ctx): Promise<Result> {
       const s = buildInsert('jobs', JOB_FIELDS, c.body);
       return { json: (await q(s.text, s.vals))[0] };
     }
+    if (b && c2 === 'logo' && c.method === 'POST') return { json: await resolveLogo(id) };
     if (b && !c2) {
       if (c.method === 'GET') return { json: (await q(`SELECT * FROM jobs WHERE id=$1`, [id]))[0] ?? null };
       if (c.method === 'PATCH') {
