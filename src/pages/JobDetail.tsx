@@ -12,11 +12,11 @@ import CompanyLogo from '../components/CompanyLogo';
 import { stageInfo, type Lane } from '../types';
 import type { Deck, Job, JobAction, JobContact, JobDoc, JobEmail, JobNote, LibItem } from '../types';
 
-const TABS = ['Overview', 'Contacts', 'Emails', 'Documents', 'Interview Prep', 'Interview deck', 'Notes Log', 'Next Actions'] as const;
+const TABS = ['Overview', 'Contacts', 'Emails', 'Documents', 'Interview Prep', 'Interview deck', 'Portfolio', 'Notes Log', 'Next Actions'] as const;
 // The sidebar groups the tabs by what you are doing; the tab names stay the same so old links still work.
 const NAV: { title: string; tabs: { key: (typeof TABS)[number]; label: string }[] }[] = [
   { title: 'The job', tabs: [{ key: 'Overview', label: 'Overview' }, { key: 'Contacts', label: 'People' }] },
-  { title: 'Apply', tabs: [{ key: 'Documents', label: 'Resume and letters' }, { key: 'Emails', label: 'Emails' }, { key: 'Next Actions', label: 'Next steps' }] },
+  { title: 'Apply', tabs: [{ key: 'Documents', label: 'Resume and letters' }, { key: 'Portfolio', label: 'Portfolio concept' }, { key: 'Emails', label: 'Emails' }, { key: 'Next Actions', label: 'Next steps' }] },
   { title: 'Interview', tabs: [{ key: 'Interview Prep', label: 'Prep sheet' }, { key: 'Interview deck', label: 'Deck' }] },
   { title: 'Record', tabs: [{ key: 'Notes Log', label: 'Notes' }] },
 ];
@@ -81,6 +81,10 @@ export default function JobDetail() {
   const [instructions, setInstructions] = useState('');
   const [prepNote, setPrepNote] = useState('');
   const [prepVer, setPrepVer] = useState<number | null>(null);
+  const [pfVer, setPfVer] = useState<number | null>(null);
+  const [pfDirection, setPfDirection] = useState('');
+  const [pfMode, setPfMode] = useState('');
+  const [copied, setCopied] = useState('');
 
   const [decks, setDecks] = useState<Deck[]>([]);
   const loadKids = () => {
@@ -177,6 +181,7 @@ export default function JobDetail() {
       const out = await api.post<any>(`ai/${action}`, { job_id: Number(id), ...extra });
       if (['parse', 'match', 'fetch'].includes(action)) setJob(out);
       else if (action === 'prep') { loadKids(); setPrepVer(out.id); }
+      else if (action === 'portfolio') { loadKids(); setPfVer(out.id); }
       else { loadKids(); setTab('Documents'); setOpenDoc(out.id); }
     } catch (e: any) { setAiErr(e.message); } finally { setBusy(null); }
   }
@@ -228,7 +233,7 @@ export default function JobDetail() {
             <div key={g.title}>
               <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-widest text-teal">{g.title}</div>
               {g.tabs.map(({ key, label }) => {
-                const n = key === 'Contacts' ? contacts.length : key === 'Documents' ? docs.filter((d) => d.kind !== 'interview_prep').length : key === 'Next Actions' ? actions.filter((a) => !a.done).length : 0;
+                const n = key === 'Contacts' ? contacts.length : key === 'Documents' ? docs.filter((d) => d.kind !== 'interview_prep' && d.kind !== 'portfolio_concept').length : key === 'Next Actions' ? actions.filter((a) => !a.done).length : 0;
                 return (
                   <button key={key} onClick={() => setTab(key)} className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm text-left transition ${tab === key ? 'bg-navy text-white font-medium shadow-sm' : 'text-navy hover:bg-white/60'}`}>
                     {label}
@@ -538,6 +543,63 @@ export default function JobDetail() {
       })()}
 
       {tab === 'Interview deck' && <JobDeck jobId={Number(id)} decks={decks} reload={loadKids} />}
+
+      {tab === 'Portfolio' && (() => {
+        const pfDocs = docs.filter((d) => d.kind === 'portfolio_concept');
+        const shown = pfDocs.find((d) => d.id === pfVer) ?? pfDocs[0];
+        const at = shown ? shown.body.indexOf('## BUILD PROMPT') : -1;
+        const concept = shown ? (at >= 0 ? shown.body.slice(0, at) : shown.body) : '';
+        const buildPrompt = shown && at >= 0 ? shown.body.slice(at).replace(/^## BUILD PROMPT\s*/, '').trim() : '';
+        const copy = (what: string, text: string) => { navigator.clipboard?.writeText(text); setCopied(what); setTimeout(() => setCopied(''), 1800); };
+        const MODES: Record<string, string> = { '': 'Let Claude decide how structured or creative', structured: 'Very structured and clean', balanced: 'Balanced', creative: 'Very creative and immersive' };
+        return (
+          <div className="space-y-5">
+            <div className="card p-5 space-y-3">
+              <div className="text-center">
+                <h2 className="text-xl font-semibold">Portfolio concept</h2>
+                <p className="text-sm text-teal">A creative concept, a content plan, and a ready to paste build prompt for a portfolio made for {job.company || 'this company'}. It only uses work you have logged in Rise, Wins.</p>
+              </div>
+              <textarea className="input" rows={3} placeholder="Optional: your direction. For example: the agency is called Bloom, so use florals and put me among them. Or: keep it clean and data-forward." value={pfDirection} onChange={(e) => setPfDirection(e.target.value)} />
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <select className="input w-auto text-sm" value={pfMode} onChange={(e) => setPfMode(e.target.value)}>
+                  {Object.entries(MODES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+                <button className="btn" disabled={!!busy} onClick={() => ai('portfolio', { instructions: [pfMode ? `Layout mode: ${MODES[pfMode]}.` : '', pfDirection].filter(Boolean).join(' ') })}>
+                  <Sparkles size={14} /> {busy === 'portfolio' ? 'Designing the concept, about a minute…' : shown ? 'Generate a new version' : 'Generate concept'}
+                </button>
+                {aiErr && <span className="text-sm text-red-700 whitespace-pre-wrap break-words">{aiErr}</span>}
+              </div>
+            </div>
+            {shown && (
+              <>
+                <div className="card p-5">
+                  <div className="flex flex-wrap items-center gap-3 mb-2">
+                    <span className="font-semibold">{shown.title}</span>
+                    {pfDocs.length > 1 && (
+                      <select className="input w-auto text-xs" value={shown.id} onChange={(e) => setPfVer(Number(e.target.value))}>
+                        {pfDocs.map((d) => <option key={d.id} value={d.id}>v{d.version}, {format(new Date(d.created_at), 'MMM d, h:mm a')}</option>)}
+                      </select>
+                    )}
+                    <button className="btn-ghost ml-auto" onClick={() => copy('all', shown.body)}>{copied === 'all' ? 'Copied' : 'Copy all'}</button>
+                    <button className="btn-ghost" title="Delete this version (you can restore it)" onClick={async () => { if (confirm('Move this version to Recently deleted?')) { await api.del(`jobs/${id}/documents/${shown.id}`); setPfVer(null); loadKids(); } }}><Trash2 size={13} /></button>
+                  </div>
+                  <PrepView text={concept} />
+                </div>
+                {buildPrompt && (
+                  <div className="rounded-2xl bg-navy text-white p-5 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <h3 className="font-semibold text-lg">Build prompt</h3>
+                      <span className="text-xs text-sky">Paste this into Claude to build the portfolio.</span>
+                      <button className="ml-auto rounded-lg bg-white text-navy px-3 py-1.5 text-sm font-medium" onClick={() => copy('prompt', buildPrompt)}>{copied === 'prompt' ? 'Copied' : 'Copy prompt'}</button>
+                    </div>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-beige">{buildPrompt}</p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {tab === 'Notes Log' && (
         <div className="space-y-4">

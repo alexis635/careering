@@ -122,6 +122,35 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
     return saveDoc(jobId, 'interview_prep', `Interview prep for ${job.company || 'job'}`, text);
   }
 
+  // 3c. Portfolio concept: the creative concept and content concept for a custom portfolio built for this employer
+  if (action === 'portfolio') {
+    const wins = await q(`SELECT title, to_char(happened_on,'Mon YYYY') AS happened, employer, role, description, impact FROM wins WHERE deleted_at IS NULL ORDER BY happened_on DESC NULLS LAST LIMIT 40`);
+    const winText = wins.map((w: any) => `- ${w.title} (${[w.employer, w.role, w.happened].filter(Boolean).join(', ')}): ${w.description}${w.impact ? ` Result: ${w.impact}` : ''}`).join('\n');
+    const text = await ask(
+      'You are a creative director and content strategist planning a CUSTOM PORTFOLIO for one specific employer. The candidate builds the portfolio herself with Claude, so your output is the brief: the creative concept, the content concept, and a ready to paste build prompt. Write in EXACTLY this plain-text layout, nothing else (no code fences, no intro):\n' +
+        '## THE READ ON THIS COMPANY\n' +
+        '3 to 5 bullets: what the company does, who it talks to, its tone and brand feel, and any wordplay or imagery in its name, products, or posting that a concept could use. Use only what the posting, company name, and role show. Never invent facts about the company.\n' +
+        '## CREATIVE CONCEPT\n' +
+        'One line "### The big idea: a short name for the concept", then 2 sentences on the idea and why it suits this company and role. ' +
+        'Then bullets with these labels: "Layout mode:" (exactly one of STRUCTURED, BALANCED, or CREATIVE, with one sentence on why it fits this role: operations and finance roles lean structured, brand, events, and creative roles can lean creative), ' +
+        '"Visual world:" (imagery, motifs, and how the candidate herself appears in it, for example a designed scene she is part of), "Palette:" (4 to 5 colors with hex codes and what each is for), "Type and texture:", "Motion and interaction:" (only if it serves the concept), "Avoid:" (what would feel off for this employer).\n' +
+        '## CONTENT CONCEPT\n' +
+        'One line "### Headline and intro" then bullets: the hero headline, a one sentence intro, and the single action a visitor should take. ' +
+        'Then the sections in order, each as one line "### 1. Section name | what it proves about her" followed by 2 to 4 bullets: the point of the section, the specific real wins or projects to show (name them), and the copy direction. 4 to 6 sections. Lead with what matters most to THIS posting.\n' +
+        '## SAMPLE COPY\n' +
+        'Ready to use words: the hero headline and intro, plus a 2 to 3 sentence blurb for each of the first three sections, written in her voice, first person, natural, no buzzwords.\n' +
+        '## BUILD PROMPT\n' +
+        'One self contained prompt, written as plain paragraphs (no bullets, no headings), that she can paste into Claude to build the portfolio: the company and role, the concept and layout mode, the palette and type, the exact sections in order with the content for each, the sample copy, the tone, and technical asks (a single page website, responsive, accessible, fast, no external tracking). Include the facts she must not change.\n\n' +
+        'RULES: Every project, employer, number, and title you name must come from the WINS or CANDIDATE MATERIAL. Never invent work, clients, results, or credentials. If the wins are thin for this role, say what to add in a bullet under the relevant section. Never say where she lives. ' +
+        'The candidate may give a direction (a look, a theme, an idea for how she appears); follow it and build the concept around it. If she gives none, choose the concept yourself. ' +
+        'You cannot see images or her files, so describe any imagery as something she will generate or source, never as something that already exists.' +
+        (body.instructions ? `\n\nThe candidate's direction: ${body.instructions}` : ''),
+      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nMATCH NOTES:\n${job.match_notes || '(none yet)'}\n\nWINS:\n${winText || '(none logged yet)'}\n\nCANDIDATE MATERIAL:\n${lib.text}`,
+      12000,
+    );
+    return saveDoc(jobId, 'portfolio_concept', `Portfolio concept for ${job.company || 'job'}`, text);
+  }
+
   // 4. Emails: outreach, follow up, and thank you (all return "Subject: ..." then the body, saved as a versioned draft)
   if (action === 'outreach' || action === 'follow_up' || action === 'thank_you') {
     const who = body.contact_name ? `Recipient: ${body.contact_name}${body.contact_title ? `, ${body.contact_title}` : ''}\n` : '';
