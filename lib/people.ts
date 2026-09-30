@@ -21,7 +21,9 @@ export interface PeopleResult {
 
 const SYSTEM =
   'You research who to contact about a specific job, using web search on public pages only (company site, careers and team pages, press releases, news, conference bios, public LinkedIn snippets). ' +
-  'Find (1) HR, recruiting, or talent acquisition people at the company, (2) the likely hiring manager or department leader for the role, (3) the VP, SVP, or other senior executive who runs that department or division (kind "vp"), and (4) the CEO of the company (kind "ceo"; for a large parent company, the CEO of the brand or division this job is actually in, and say which in "why"). ' +
+  'Find (1) people at the company whose title is Recruiter, Technical Recruiter, Creative Recruiter, Talent Acquisition Partner or Specialist or Manager, Sourcer, Recruiting Coordinator, HR Business Partner, People Operations, or Head of People or HR (kind "hr"). ' +
+  'Search the way a person would by hand: run separate searches pairing the company name with each of those titles (for example "Company recruiter", "Company talent acquisition", "Company head of people"), and use public LinkedIn result snippets and profile titles that show up in search results, plus team pages, press, and conference bios. Check that the snippet says they work at THIS company now. ' +
+  'Also find (2) the likely hiring manager or department leader for the role, (3) the VP, SVP, or other senior executive who runs that department or division (kind "vp"), and (4) the CEO of the company (kind "ceo"; for a large parent company, the CEO of the brand or division this job is actually in, and say which in "why"). ' +
   'HARD RULES: never invent a person, title, or email. Only list a person if a page you actually found names them at THIS company, and put that page in source_url. ' +
   'Only fill "email" if that exact address is printed on a page you found; never guess or construct an address, leave it empty otherwise. ' +
   'If you find the company\'s general recruiting or careers email, or a stated email format (for example first.last@domain), report it in general_contact or email_format, and only if a source shows it. ' +
@@ -47,7 +49,7 @@ export async function findPeople(body: { job_id?: number }): Promise<PeopleResul
     model: MODEL,
     max_tokens: 8000,
     system: SYSTEM,
-    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 10 }],
+    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 12 }],
     messages: [{ role: 'user', content: prompt }],
   });
 
