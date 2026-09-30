@@ -6,6 +6,7 @@ import { api } from '../api';
 import FitBadge from '../components/FitBadge';
 import PrepView from '../components/PrepView';
 import JobDeck from '../components/JobDeck';
+import FindPeople from '../components/FindPeople';
 import { stageInfo, type Lane } from '../types';
 import type { Deck, Job, JobAction, JobContact, JobDoc, JobEmail, JobNote, LibItem } from '../types';
 
@@ -237,6 +238,7 @@ export default function JobDetail() {
 
       {tab === 'Contacts' && (
         <div className="space-y-4">
+          <FindPeople jobId={Number(id)} company={job.company} role={job.role_title} contacts={contacts} onAdded={loadKids} />
           <form className="card p-4 grid gap-3 sm:grid-cols-2" onSubmit={async (e) => {
             e.preventDefault();
             if (!newContact.name.trim() && !newContact.email.trim()) return;
@@ -246,7 +248,7 @@ export default function JobDetail() {
             <div><label className="label">Name</label><input className="input" value={newContact.name} onChange={(e) => setNewContact({ ...newContact, name: e.target.value })} /></div>
             <div><label className="label">Title</label><input className="input" value={newContact.title} onChange={(e) => setNewContact({ ...newContact, title: e.target.value })} /></div>
             <div><label className="label">Email</label><input className="input" type="email" value={newContact.email} onChange={(e) => setNewContact({ ...newContact, email: e.target.value })} /></div>
-            <div><label className="label">Where you found them</label><input className="input" placeholder="Apollo, LinkedIn, referral…" value={newContact.notes} onChange={(e) => setNewContact({ ...newContact, notes: e.target.value })} /></div>
+            <div><label className="label">Where you found them</label><input className="input" placeholder="LinkedIn, referral, company site…" value={newContact.notes} onChange={(e) => setNewContact({ ...newContact, notes: e.target.value })} /></div>
             <div className="sm:col-span-2"><button className="btn"><Plus size={14} /> Add contact</button></div>
           </form>
           {aiErr && <p className="text-sm text-red-700">{aiErr}</p>}
