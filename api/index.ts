@@ -9,6 +9,7 @@ import { authUrl, checkState, gmailStatus, handleCallback, sendEmail, sendToSelf
 import { mailList } from '../lib/mail.js';
 import { home } from '../lib/home.js';
 import * as vault from '../lib/vault.js';
+import { hunterFind, hunterUsage } from '../lib/hunter.js';
 import * as cases from '../lib/cases.js';
 import * as roles from '../lib/roles.js';
 import * as decks from '../lib/decks.js';
@@ -319,6 +320,10 @@ export async function route(c: Ctx): Promise<Result> {
     if (b === 'sync-all' && c.method === 'POST') return { json: await syncAll() };
     if (b === 'sync' && c.method === 'POST') return { json: await syncReplies(Number(c.body.job_id)) };
   }
+
+  // ---- hunter (email lookup, only on click) ----
+  if (a === 'hunter' && b === 'usage' && c.method === 'GET') return { json: await hunterUsage() };
+  if (a === 'hunter' && b === 'find' && c.method === 'POST') return { json: await hunterFind(c.body) };
 
   // ---- ai ----
   if (a === 'ai' && b && c.method === 'POST') return { json: await aiRoute(b, c.body) };

@@ -12,6 +12,7 @@ export interface FoundPerson {
 }
 export interface PeopleResult {
   company: string;
+  domain: string;
   people: FoundPerson[];
   email_format: string;
   general_contact: string;
@@ -25,8 +26,8 @@ const SYSTEM =
   'Only fill "email" if that exact address is printed on a page you found; never guess or construct an address, leave it empty otherwise. ' +
   'If you find the company\'s general recruiting or careers email, or a stated email format (for example first.last@domain), report it in general_contact or email_format, and only if a source shows it. ' +
   'Prefer people who are current as of the source. If a source looks old, say so in "why". If you find nobody with confidence, return an empty people list and explain in notes. ' +
-  'Respond with ONLY a JSON object: {"people":[{"name","title","kind":"hr"|"hiring_manager"|"department_lead","email","source_url","why"}],"email_format":"","general_contact":"","notes":""}. ' +
-  '"why" is one short sentence on why this person fits and how current the source is. At most 8 people, best matches first. NEVER use em dashes or en dashes.';
+  'Respond with ONLY a JSON object: {"people":[{"name","title","kind":"hr"|"hiring_manager"|"department_lead","email","source_url","why"}],"company_domain":"","email_format":"","general_contact":"","notes":""}. ' +
+  '"why" is one short sentence on why this person fits and how current the source is. company_domain is the company\'s main website domain (for example stripe.com) if you saw it. At most 8 people, best matches first. NEVER use em dashes or en dashes.';
 
 export async function findPeople(body: { job_id?: number }): Promise<PeopleResult> {
   if (!process.env.ANTHROPIC_API_KEY) throw new HttpError(400, 'ANTHROPIC_API_KEY is not set');
@@ -69,6 +70,7 @@ export async function findPeople(body: { job_id?: number }): Promise<PeopleResul
 
   return {
     company: job.company,
+    domain: String((out as any).company_domain || '').trim().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0],
     people,
     email_format: String(out.email_format || '').trim(),
     general_contact: String(out.general_contact || '').trim(),
