@@ -276,7 +276,7 @@ export default function JobDetail() {
                 <div className="flex flex-wrap items-center gap-3">
                   <button className="btn" disabled={!!busy} onClick={analyze}><Sparkles size={14} /> {busy === 'analyze' ? 'Reading the posting…' : job.posting_parsed ? 'Analyze again' : 'Analyze this job'}</button>
                   <span className="text-xs text-teal">Gets the posting from the link if needed, pulls out the requirements, and checks the fit.</span>
-                  {aiErr && <span className="text-sm text-red-700">{aiErr}</span>}
+                  {aiErr && <span className="text-sm text-red-700 whitespace-pre-wrap break-words">{aiErr}</span>}
                 </div>
                 {job.posting_parsed && (
                   <div className="rounded-xl bg-beige p-4 text-sm space-y-3">
@@ -518,7 +518,7 @@ export default function JobDetail() {
                 <input className="input" placeholder="Optional: who you are meeting, the round, or what to focus on" value={prepNote} onChange={(e) => setPrepNote(e.target.value)} />
                 <div className="flex flex-wrap items-center justify-center gap-3">
                   <button className="btn" disabled={!!busy} onClick={() => ai('prep', { instructions: prepNote })}><Sparkles size={14} /> {busy === 'prep' ? 'Preparing, about a minute…' : shown ? 'Generate a new version' : 'Generate interview prep'}</button>
-                  {aiErr && <span className="text-sm text-red-700">{aiErr}</span>}
+                  {aiErr && <span className="text-sm text-red-700 whitespace-pre-wrap break-words">{aiErr}</span>}
                 </div>
               </div>
             )}
