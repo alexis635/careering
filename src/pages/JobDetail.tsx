@@ -7,10 +7,18 @@ import FitBadge from '../components/FitBadge';
 import PrepView from '../components/PrepView';
 import JobDeck from '../components/JobDeck';
 import FindPeople from '../components/FindPeople';
+import ResumeEditor from '../components/ResumeEditor';
 import { stageInfo, type Lane } from '../types';
 import type { Deck, Job, JobAction, JobContact, JobDoc, JobEmail, JobNote, LibItem } from '../types';
 
 const TABS = ['Overview', 'Contacts', 'Emails', 'Documents', 'Interview Prep', 'Interview deck', 'Notes Log', 'Next Actions'] as const;
+// The sidebar groups the tabs by what you are doing; the tab names stay the same so old links still work.
+const NAV: { title: string; tabs: { key: (typeof TABS)[number]; label: string }[] }[] = [
+  { title: 'The job', tabs: [{ key: 'Overview', label: 'Overview' }, { key: 'Contacts', label: 'People' }] },
+  { title: 'Apply', tabs: [{ key: 'Documents', label: 'Resume and letters' }, { key: 'Emails', label: 'Emails' }, { key: 'Next Actions', label: 'Next steps' }] },
+  { title: 'Interview', tabs: [{ key: 'Interview Prep', label: 'Prep sheet' }, { key: 'Interview deck', label: 'Deck' }] },
+  { title: 'Record', tabs: [{ key: 'Notes Log', label: 'Notes' }] },
+];
 type Tab = (typeof TABS)[number];
 
 function Field({ label, value, onSave, type = 'text', wide = false }: { label: string; value: string | null; onSave: (v: string) => void; type?: string; wide?: boolean }) {
@@ -168,31 +176,58 @@ export default function JobDetail() {
   const logistics = job.type === 'logistics';
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <Link to={`/lanes/${job.lane_id}`} className="text-sm text-teal inline-flex items-center gap-1 mb-2"><ArrowLeft size={14} /> Back to lane</Link>
-      <div className="flex flex-wrap items-center justify-center gap-3 mb-1 text-center">
-        <div className="basis-full">
-          <h1 className="text-4xl font-bold">{job.company || 'Untitled'}</h1>
-          <p className="text-teal">{job.role_title}</p>
+    <div className="max-w-6xl mx-auto">
+      <Link to={`/lanes/${job.lane_id}`} className="text-sm text-teal inline-flex items-center gap-1 mb-3"><ArrowLeft size={14} /> Back to {lane?.name ?? 'lane'}</Link>
+      <div className="card p-5 sm:p-6 mb-5 flex flex-wrap items-start gap-x-6 gap-y-3">
+        <div className="flex-1 min-w-64">
+          <h1 className="text-3xl sm:text-4xl font-bold leading-tight">{job.company || 'Untitled'}</h1>
+          <p className="text-teal mt-0.5">{job.role_title}</p>
+          <div className="flex flex-wrap items-center gap-2 mt-3 text-xs">
+            <span className="rounded-full bg-navy text-white px-2.5 py-1 font-medium">{job.closed_outcome ? stageInfo(lane).outcome(job.closed_outcome) : stageInfo(lane).label(job.stage)}</span>
+            {job.fit && <FitBadge fit={job.fit} />}
+            {job.deadline && <span className="rounded-full bg-beige border border-sky px-2.5 py-1 text-teal">Deadline {format(new Date(job.deadline.slice(0, 10) + 'T12:00:00'), 'MMM d')}</span>}
+            {[job.location, job.remote_type].filter(Boolean).length > 0 && <span className="text-teal">{[job.location, job.remote_type].filter(Boolean).join(' · ')}</span>}
+          </div>
         </div>
-        {job.source_link && <a className="btn-ghost" href={job.source_link} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Posting</a>}
-        <button className="btn-ghost" title="Move to Trash (restorable)" onClick={async () => { if (confirm('Move this job to the Trash?\n\nEverything in it stays saved, and you can restore it anytime from Archive & Trash.')) { await api.del(`jobs/${id}`); nav(`/lanes/${job.lane_id}`); } }}><Trash2 size={14} /></button>
+        <div className="flex items-center gap-2">
+          {job.source_link && <a className="btn-ghost" href={job.source_link} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Posting</a>}
+          <button className="btn-ghost" title="Move to Trash (restorable)" onClick={async () => { if (confirm('Move this job to the Trash?\n\nEverything in it stays saved, and you can restore it anytime from Archive & Trash.')) { await api.del(`jobs/${id}`); nav(`/lanes/${job.lane_id}`); } }}><Trash2 size={14} /></button>
+        </div>
       </div>
 
-      <div className="flex justify-center gap-1 border-b border-sky my-5 overflow-x-auto overflow-y-hidden">
-        {TABS.map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`px-3.5 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${tab === t ? 'border-navy font-semibold' : 'border-transparent text-teal hover:text-navy'}`}>
-            {t}
-            {t === 'Contacts' && contacts.length > 0 && <span className="ml-1.5 text-xs text-teal">{contacts.length}</span>}
-            {t === 'Documents' && docs.length > 0 && <span className="ml-1.5 text-xs text-teal">{docs.length}</span>}
-            {t === 'Next Actions' && actions.some((a) => !a.done) && <span className="ml-1.5 text-xs text-teal">{actions.filter((a) => !a.done).length}</span>}
-          </button>
-        ))}
-      </div>
-
+      <div className="md:flex md:gap-6 md:items-start">
+      <nav className="md:w-52 md:shrink-0 md:sticky md:top-28 mb-5 md:mb-0">
+        <div className="md:hidden flex gap-1 overflow-x-auto pb-1">
+          {TABS.map((t) => (
+            <button key={t} onClick={() => setTab(t)} className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap ${tab === t ? 'bg-navy text-white' : 'text-teal bg-white border border-sky/60'}`}>{t}</button>
+          ))}
+        </div>
+        <div className="hidden md:block card p-2 space-y-3">
+          {NAV.map((g) => (
+            <div key={g.title}>
+              <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-widest text-teal/80">{g.title}</div>
+              {g.tabs.map(({ key, label }) => {
+                const n = key === 'Contacts' ? contacts.length : key === 'Documents' ? docs.filter((d) => d.kind !== 'interview_prep').length : key === 'Next Actions' ? actions.filter((a) => !a.done).length : 0;
+                return (
+                  <button key={key} onClick={() => setTab(key)} className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm text-left transition ${tab === key ? 'bg-navy text-white font-medium' : 'text-navy hover:bg-sky/40'}`}>
+                    {label}
+                    {n > 0 && <span className={`text-xs ${tab === key ? 'text-sky' : 'text-teal'}`}>{n}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </nav>
+      <div className="flex-1 min-w-0">
       {tab === 'Overview' && (
         <div className="space-y-5">
-          <div className="card p-5 grid gap-4 sm:grid-cols-2">
+          <details className="card group">
+          <summary className="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between text-sm font-medium">
+            <span>Job details <span className="text-teal font-normal">{[job.salary_range, job.contact_person].filter(Boolean).join(' · ')}</span></span>
+            <span className="text-xs text-teal group-open:hidden">Edit</span><span className="text-xs text-teal hidden group-open:inline">Hide</span>
+          </summary>
+          <div className="px-5 pb-5 grid gap-4 sm:grid-cols-2">
             <Field label={logistics ? 'Topic' : 'Company'} value={job.company} onSave={(v) => save({ company: v })} />
             <Field label={logistics ? 'Detail' : 'Role title'} value={job.role_title} onSave={(v) => save({ role_title: v })} />
             <Field label="Source link" value={job.source_link} onSave={(v) => save({ source_link: v })} wide />
@@ -206,6 +241,7 @@ export default function JobDetail() {
             <Field label="Contact person" value={job.contact_person} onSave={(v) => save({ contact_person: v })} />
             <Field label="Contact notes" value={job.contact_notes} onSave={(v) => save({ contact_notes: v })} wide />
           </div>
+          </details>
           {!logistics && (
             <div className="card p-5 space-y-4">
               <TextBlock label="Job posting" value={job.posting_text} onSave={(v) => save({ posting_text: v })} rows={10} placeholder="Paste the full posting here. It powers matching and drafting." />
@@ -397,7 +433,9 @@ export default function JobDetail() {
               </button>
               {openDoc === d.id && (
                 <>
-                  {d.kind === 'resume' || d.kind === 'cover_letter' ? (
+                  {d.kind === 'resume' ? (
+                    <div className="mt-3"><ResumeEditor key={d.id} text={edits[d.id] ?? d.body} onChange={(t) => setEdits((e) => ({ ...e, [d.id]: t }))} /></div>
+                  ) : d.kind === 'cover_letter' ? (
                     <textarea className="input font-mono text-[12px] leading-relaxed mt-3" rows={22} value={edits[d.id] ?? d.body} onChange={(e) => setEdits({ ...edits, [d.id]: e.target.value })} />
                   ) : (
                     <pre className="whitespace-pre-wrap text-sm mt-3 font-sans">{d.body}</pre>
@@ -532,6 +570,8 @@ export default function JobDetail() {
           </div>
         );
       })()}
+      </div>
+      </div>
     </div>
   );
 }

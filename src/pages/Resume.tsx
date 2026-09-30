@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { Download, Sparkles } from 'lucide-react';
 import { api } from '../api';
+import ResumeEditor from '../components/ResumeEditor';
 import type { LibItem } from '../types';
 
 const EXAMPLES = [
@@ -107,9 +108,9 @@ export default function ResumeBuilder() {
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold">{current.title}</span>
             {fit && <span className={`text-xs rounded px-2 py-0.5 ${fit.pages > 1 ? 'bg-sky text-navy' : 'bg-beige text-teal border border-sky'}`}>{fit.pages > 1 ? `Runs to ${fit.pages} pages` : `One page, ${fit.fs.toFixed(1)} pt`}</span>}
-            <span className="text-xs text-teal ml-auto">Saved to your Library</span>
+            <span className="text-xs text-teal ml-auto">{current.tags.includes('generated') ? 'Saved to your Library' : 'Master resume: Save edits changes it in your Library'}</span>
           </div>
-          <textarea className="input font-mono text-[12px] leading-relaxed" rows={22} value={text} onChange={(e) => setText(e.target.value)} />
+          <ResumeEditor key={current.id} text={text} onChange={setText} />
           <div className="flex flex-wrap items-center gap-2">
             <button className="btn" disabled={!!busy} onClick={download}><Download size={14} /> Download PDF</button>
             <button className="btn-ghost" disabled={!!busy || text === current.body} onClick={() => run(async () => (await saveEdits()) as LibItem, 'Saving…')}>Save edits</button>
@@ -120,6 +121,20 @@ export default function ResumeBuilder() {
             <button className="btn-ghost whitespace-nowrap" disabled={!!busy || !refine.trim()} onClick={refineIt}>Revise</button>
           </div>
           <p className="text-xs text-teal">Each revision is saved as a new version, so nothing is lost. Your changes to the text are saved when you revise.</p>
+        </div>
+      )}
+
+      {masters.length > 0 && (
+        <div>
+          <h2 className="text-xl font-semibold text-center mb-3">Your master resumes</h2>
+          <div className="card divide-y divide-sky/60">
+            {masters.map((g) => (
+              <button key={g.id} className="w-full text-left flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-beige/60" onClick={() => open(g)}>
+                <span className="font-medium truncate">{g.title.replace(/^Master:\s*/, '')}</span>
+                <span className="ml-auto text-xs text-teal whitespace-nowrap">Open and edit</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

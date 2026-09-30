@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 import { api } from '../api';
+import ResumeEditor from '../components/ResumeEditor';
 import type { LibItem } from '../types';
 
 const KINDS: { key: LibItem['kind']; label: string; hint: string }[] = [
@@ -17,6 +18,7 @@ function Item({ item, onChange, onDelete }: { item: LibItem; onChange: (p: Parti
   const [body, setBody] = useState(item.body);
   const [title, setTitle] = useState(item.title);
   const [tags, setTags] = useState(item.tags.join(', '));
+  const [open, setOpen] = useState(item.kind !== 'resume');
   return (
     <div className="card p-4 space-y-2">
       <div className="flex gap-2">
@@ -25,7 +27,16 @@ function Item({ item, onChange, onDelete }: { item: LibItem; onChange: (p: Parti
         )}
         <button className="text-teal hover:text-navy ml-auto" onClick={onDelete}><Trash2 size={15} /></button>
       </div>
-      <textarea className="input" rows={item.kind === 'resume' ? 12 : 3} value={body} onChange={(e) => setBody(e.target.value)} onBlur={() => body !== item.body && onChange({ body })} />
+      {item.kind === 'resume' && !open ? (
+        <button className="btn-ghost" onClick={() => setOpen(true)}>Open and edit</button>
+      ) : item.kind === 'resume' ? (
+        <>
+          <ResumeEditor text={body} onChange={setBody} />
+          {body !== item.body && <button className="btn" onClick={() => onChange({ body })}>Save changes</button>}
+        </>
+      ) : (
+        <textarea className="input" rows={3} value={body} onChange={(e) => setBody(e.target.value)} onBlur={() => body !== item.body && onChange({ body })} />
+      )}
       <input className="input" placeholder="Tags (comma separated)" value={tags} onChange={(e) => setTags(e.target.value)}
         onBlur={() => onChange({ tags: tags.split(',').map((t) => t.trim()).filter(Boolean) })} />
     </div>
