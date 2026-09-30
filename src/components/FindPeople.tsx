@@ -16,8 +16,9 @@ export default function FindPeople({ jobId, company, role, contacts, onAdded }: 
   const [found, setFound] = useState<Record<string, { email: string; score: number; verified: boolean }>>({});
   const [lookup, setLookup] = useState<string | null>(null);
   const [left, setLeft] = useState<number | null>(null);
+  const [hMsg, setHMsg] = useState('');
 
-  useEffect(() => { api.get<any>('hunter/usage').then((u) => setLeft(u?.enabled ? u.searches?.remaining ?? null : null)).catch(() => {}); }, [found]);
+  useEffect(() => { api.get<any>('hunter/usage').then((u) => { setLeft(u?.enabled ? u.searches?.remaining ?? null : null); setHMsg(u?.enabled ? '' : u?.reason || ''); }).catch((e) => setHMsg(`Could not check Hunter: ${e.message}`)); }, [found]);
   async function findEmail(p: Found) {
     setLookup(p.name); setErr('');
     try { const r = await api.post<any>('hunter/find', { job_id: jobId, name: p.name, domain: res?.domain }); setFound((f) => ({ ...f, [p.name]: r })); }
@@ -84,6 +85,7 @@ export default function FindPeople({ jobId, company, role, contacts, onAdded }: 
         </div>
       )}
 
+      {hMsg && <p className="text-xs text-red-700">Email lookup is off. {hMsg}</p>}
       {left !== null && <p className="text-xs text-teal">Email lookups left this month: {left}. Each Find email click uses one.</p>}
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-teal pt-1">
         <span>Search LinkedIn:</span>

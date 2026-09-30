@@ -15,8 +15,9 @@ async function hunter(path: string, params: Record<string, string>) {
 
 /** Remaining free lookups, so she can see what is left. This call does not cost credits. */
 export async function hunterUsage() {
-  if (!process.env.HUNTER_API_KEY) return { enabled: false };
-  const d = await hunter('account', {});
+  if (!process.env.HUNTER_API_KEY) return { enabled: false, reason: 'The app cannot see HUNTER_API_KEY yet. Check the name in Vercel and redeploy.' };
+  let d: any;
+  try { d = await hunter('account', {}); } catch (e: any) { return { enabled: false, reason: `Hunter said: ${e.message}` }; }
   return { enabled: true, searches: d?.requests?.searches ?? null, verifications: d?.requests?.verifications ?? null };
 }
 
