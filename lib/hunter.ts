@@ -2,8 +2,11 @@ import { HttpError, loadJob } from './ai.js';
 
 const BASE = 'https://api.hunter.io/v2';
 
+/** Vercel values sometimes pick up a stray space, newline, or quote marks when pasted. */
+const cleanKey = () => (process.env.HUNTER_API_KEY || '').trim().replace(/^['"]|['"]$/g, '').trim();
+
 async function hunter(path: string, params: Record<string, string>) {
-  const key = process.env.HUNTER_API_KEY;
+  const key = cleanKey();
   if (!key) throw new HttpError(400, 'HUNTER_API_KEY is not set');
   const qs = new URLSearchParams({ ...params, api_key: key });
   const res = await fetch(`${BASE}/${path}?${qs}`);
@@ -15,9 +18,9 @@ async function hunter(path: string, params: Record<string, string>) {
 
 /** Remaining free lookups, so she can see what is left. This call does not cost credits. */
 export async function hunterUsage() {
-  if (!process.env.HUNTER_API_KEY) return { enabled: false, reason: 'The app cannot see HUNTER_API_KEY yet. Check the name in Vercel and redeploy.' };
+  if (!cleanKey()) return { enabled: false, reason: 'The app cannot see HUNTER_API_KEY yet. Check the name in Vercel and redeploy.' };
   let d: any;
-  try { d = await hunter('account', {}); } catch (e: any) { return { enabled: false, reason: `Hunter said: ${e.message}` }; }
+  try { d = await hunter('account', {}); } catch (e: any) { return { enabled: false, reason: `Hunter said: ${e.message}. The saved key is ${cleanKey().length} characters long and ends in ${cleanKey().slice(-4)}. The right one is 40 characters and ends in 8f2a.` }; }
   return { enabled: true, searches: d?.requests?.searches ?? null, verifications: d?.requests?.verifications ?? null };
 }
 
