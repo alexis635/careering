@@ -3,10 +3,10 @@ import { ExternalLink, Plus, Search } from 'lucide-react';
 import { api } from '../api';
 import type { JobContact } from '../types';
 
-interface Found { name: string; title: string; kind: 'hr' | 'hiring_manager' | 'department_lead'; email: string; source_url: string; why: string }
+interface Found { name: string; title: string; kind: 'hr' | 'hiring_manager' | 'department_lead' | 'vp' | 'ceo'; email: string; source_url: string; why: string }
 interface Result { company: string; domain: string; people: Found[]; email_format: string; general_contact: string; notes: string }
 
-const KIND: Record<Found['kind'], string> = { hr: 'HR / recruiting', hiring_manager: 'Hiring manager', department_lead: 'Department lead' };
+const KIND: Record<Found['kind'], string> = { hr: 'HR / recruiting', hiring_manager: 'Hiring manager', department_lead: 'Department lead', vp: 'VP of the department', ceo: 'CEO' };
 
 export default function FindPeople({ jobId, company, role, contacts, onAdded }: { jobId: number; company: string; role: string; contacts: JobContact[]; onAdded: () => void }) {
   const [res, setRes] = useState<Result | null>(null);
@@ -47,7 +47,7 @@ export default function FindPeople({ jobId, company, role, contacts, onAdded }: 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex-1 min-w-48">
           <div className="font-medium">Find people at {company || 'this company'}</div>
-          <div className="text-xs text-teal">Searches public pages for HR or recruiting contacts and the likely hiring manager. Emails only show when they are printed on a page, never guessed.</div>
+          <div className="text-xs text-teal">Searches public pages for HR or recruiting contacts, the likely hiring manager, the VP over that department, and the CEO. Emails only show when they are printed on a page, never guessed.</div>
         </div>
         <button className="btn" disabled={busy || !company.trim()} onClick={run}><Search size={14} /> {busy ? 'Searching, about a minute…' : res ? 'Search again' : 'Find people'}</button>
       </div>
@@ -92,6 +92,8 @@ export default function FindPeople({ jobId, company, role, contacts, onAdded }: 
         <a className="underline" href={li('recruiter')} target="_blank" rel="noreferrer">Recruiters</a>
         <a className="underline" href={li('human resources')} target="_blank" rel="noreferrer">HR</a>
         {role && <a className="underline" href={li(`${role} manager`)} target="_blank" rel="noreferrer">Hiring manager</a>}
+        <a className="underline" href={li('vice president')} target="_blank" rel="noreferrer">VP</a>
+        <a className="underline" href={li('CEO')} target="_blank" rel="noreferrer">CEO</a>
       </div>
     </div>
   );

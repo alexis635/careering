@@ -5,7 +5,7 @@ import { deepNoDash } from '../src/lib/noDash.js';
 export interface FoundPerson {
   name: string;
   title: string;
-  kind: 'hr' | 'hiring_manager' | 'department_lead';
+  kind: 'hr' | 'hiring_manager' | 'department_lead' | 'vp' | 'ceo';
   email: string;
   source_url: string;
   why: string;
@@ -21,13 +21,13 @@ export interface PeopleResult {
 
 const SYSTEM =
   'You research who to contact about a specific job, using web search on public pages only (company site, careers and team pages, press releases, news, conference bios, public LinkedIn snippets). ' +
-  'Find (1) HR, recruiting, or talent acquisition people at the company, and (2) the likely hiring manager or department leader for the role. ' +
+  'Find (1) HR, recruiting, or talent acquisition people at the company, (2) the likely hiring manager or department leader for the role, (3) the VP, SVP, or other senior executive who runs that department or division (kind "vp"), and (4) the CEO of the company (kind "ceo"; for a large parent company, the CEO of the brand or division this job is actually in, and say which in "why"). ' +
   'HARD RULES: never invent a person, title, or email. Only list a person if a page you actually found names them at THIS company, and put that page in source_url. ' +
   'Only fill "email" if that exact address is printed on a page you found; never guess or construct an address, leave it empty otherwise. ' +
   'If you find the company\'s general recruiting or careers email, or a stated email format (for example first.last@domain), report it in general_contact or email_format, and only if a source shows it. ' +
   'Prefer people who are current as of the source. If a source looks old, say so in "why". If you find nobody with confidence, return an empty people list and explain in notes. ' +
-  'Respond with ONLY a JSON object: {"people":[{"name","title","kind":"hr"|"hiring_manager"|"department_lead","email","source_url","why"}],"company_domain":"","email_format":"","general_contact":"","notes":""}. ' +
-  '"why" is one short sentence on why this person fits and how current the source is. company_domain is the company\'s main website domain (for example stripe.com) if you saw it. At most 8 people, best matches first. NEVER use em dashes or en dashes.';
+  'Respond with ONLY a JSON object: {"people":[{"name","title","kind":"hr"|"hiring_manager"|"department_lead"|"vp"|"ceo","email","source_url","why"}],"company_domain":"","email_format":"","general_contact":"","notes":""}. ' +
+  '"why" is one short sentence on why this person fits and how current the source is. company_domain is the company\'s main website domain (for example stripe.com) if you saw it. At most 10 people. Always try for one vp and one ceo in addition to the HR and hiring contacts. NEVER use em dashes or en dashes.';
 
 export async function findPeople(body: { job_id?: number }): Promise<PeopleResult> {
   if (!process.env.ANTHROPIC_API_KEY) throw new HttpError(400, 'ANTHROPIC_API_KEY is not set');
@@ -40,14 +40,14 @@ export async function findPeople(body: { job_id?: number }): Promise<PeopleResul
     `Company: ${job.company}\nRole: ${job.role_title}\nLocation: ${job.location}\n${parsed}` +
     (job.source_link ? `Posting link: ${job.source_link}\n` : '') +
     (known ? `A contact already named on the posting: ${known}\n` : '') +
-    '\nFind the HR or recruiting contacts and the likely hiring manager or department head for this role.';
+    '\nFind the HR or recruiting contacts, the likely hiring manager or department head for this role, the VP (or equivalent senior leader) over that department, and the CEO.';
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const res = await (client.messages as any).create({
     model: MODEL,
     max_tokens: 8000,
     system: SYSTEM,
-    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 8 }],
+    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 10 }],
     messages: [{ role: 'user', content: prompt }],
   });
 
@@ -61,12 +61,12 @@ export async function findPeople(body: { job_id?: number }): Promise<PeopleResul
     .map((p) => ({
       name: String(p.name).trim(),
       title: String(p.title || '').trim(),
-      kind: (['hr', 'hiring_manager', 'department_lead'].includes(p.kind) ? p.kind : 'hr') as FoundPerson['kind'],
+      kind: (['hr', 'hiring_manager', 'department_lead', 'vp', 'ceo'].includes(p.kind) ? p.kind : 'hr') as FoundPerson['kind'],
       email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(p.email || '').trim()) ? String(p.email).trim() : '',
       source_url: String(p.source_url).trim(),
       why: String(p.why || '').trim(),
     }))
-    .slice(0, 8);
+    .slice(0, 10);
 
   return {
     company: job.company,
