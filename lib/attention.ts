@@ -4,13 +4,13 @@ import { stageLabel } from './stages.js';
 /** Things that need a nudge. Dates come back as plain YYYY-MM-DD strings so the browser can compare in local time. */
 export async function attention() {
   const deadlines = await q(
-    `SELECT j.id, j.company, j.role_title, j.stage, to_char(j.deadline,'YYYY-MM-DD') AS deadline, l.name AS lane_name, l.color
+    `SELECT j.id, j.company, j.company_domain, j.role_title, j.stage, to_char(j.deadline,'YYYY-MM-DD') AS deadline, l.name AS lane_name, l.color
        FROM jobs j JOIN lanes l ON l.id = j.lane_id
       WHERE j.deleted_at IS NULL AND l.deleted_at IS NULL AND l.archived_at IS NULL AND j.deadline IS NOT NULL AND j.stage <> 'Closed' AND j.deadline <= current_date + 16
       ORDER BY j.deadline`,
   );
   const stale = await q(
-    `SELECT j.id, j.company, j.role_title, j.stage, l.name AS lane_name, l.color, l.stages_config,
+    `SELECT j.id, j.company, j.company_domain, j.role_title, j.stage, l.name AS lane_name, l.color, l.stages_config,
             to_char(GREATEST(j.updated_at, COALESCE(e.last_email, j.updated_at)),'YYYY-MM-DD') AS last_activity
        FROM jobs j JOIN lanes l ON l.id = j.lane_id
        LEFT JOIN (SELECT job_id, max(sent_at) AS last_email FROM job_emails GROUP BY job_id) e ON e.job_id = j.id

@@ -23,8 +23,8 @@ export interface JobDoc { id: number; kind: string; title: string; body: string;
 export interface JobNote { id: number; body: string; kind: string; created_at: string }
 export interface JobAction { id: number; text: string; done: boolean; due_date: string | null }
 export interface Attention {
-  deadlines: { id: number; company: string; role_title: string; stage: string; deadline: string; lane_name: string; color: string }[];
-  stale: { id: number; company: string; role_title: string; stage: string; last_activity: string; lane_name: string; color: string }[];
+  deadlines: { id: number; company: string; company_domain?: string; role_title: string; stage: string; deadline: string; lane_name: string; color: string }[];
+  stale: { id: number; company: string; company_domain?: string; role_title: string; stage: string; last_activity: string; lane_name: string; color: string }[];
   actions: { id: number; text: string; due_date: string; job_id: number; company: string; role_title: string }[];
   credentials?: { id: number; title: string; category: string; expires_on: string }[];
 }

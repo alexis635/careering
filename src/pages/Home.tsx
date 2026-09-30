@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { api } from '../api';
+import CompanyLogo from '../components/CompanyLogo';
 import FitBadge from '../components/FitBadge';
 import NeedsAttention from '../components/NeedsAttention';
 import QuickAdd from '../components/QuickAdd';
 import type { Attention, Job, Lane } from '../types';
 
 interface HomeData {
-  recentJobs: (Pick<Job, 'id' | 'company' | 'role_title' | 'stage' | 'fit'> & { updated_at: string; lane_name: string; color: string })[];
+  recentJobs: (Pick<Job, 'id' | 'company' | 'role_title' | 'stage' | 'fit' | 'company_domain'> & { updated_at: string; lane_name: string; color: string })[];
   repliesThisWeek: number;
   recentMail: { id: number; job_id: number; label: string; direction: string; subject: string; snippet: string; sent_at: string }[];
 }
@@ -94,7 +95,7 @@ export default function Home() {
           <div className="card divide-y divide-sky/60">
             {data.recentJobs.map((j) => (
               <Link key={j.id} to={`/jobs/${j.id}`} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-beige/60">
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: j.color }} />
+                <CompanyLogo size="sm" domain={j.company_domain} name={j.company} />
                 <span className="font-medium">{j.company}</span><span className="text-teal truncate">{j.role_title}</span>
                 <FitBadge fit={j.fit} />
                 <span className="ml-auto text-xs text-teal whitespace-nowrap">{j.stage}, {format(new Date(j.updated_at), 'MMM d')}</span>

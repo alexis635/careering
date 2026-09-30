@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
+import CompanyLogo from './CompanyLogo';
 import type { Attention } from '../types';
 
 function rel(dateStr: string) {
@@ -30,7 +31,7 @@ export default function NeedsAttention({ att }: { att: Attention | null }) {
           </Link>); })}
         {soon.map((d) => { const r = rel(d.deadline); return (
           <Link key={`d${d.id}`} to={`/jobs/${d.id}`} className={row}>
-            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: d.color }} />
+            <CompanyLogo size="sm" domain={d.company_domain} name={d.company} />
             <span className="font-medium">{d.company || 'Untitled'}</span><span className="text-teal">{d.role_title}</span>
             <span className={`ml-auto ${r.late ? 'font-semibold' : 'text-teal'}`}>Deadline {r.text}</span>
           </Link>); })}
@@ -42,7 +43,7 @@ export default function NeedsAttention({ att }: { att: Attention | null }) {
           </Link>); })}
         {stale.map((s) => { const days = differenceInCalendarDays(new Date(), parseISO(s.last_activity)); return (
           <Link key={`s${s.id}`} to={`/jobs/${s.id}`} className={row}>
-            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
+            <CompanyLogo size="sm" domain={s.company_domain} name={s.company} />
             <span className="font-medium">{s.company || 'Untitled'}</span><span className="text-teal">{s.role_title}</span>
             <span className="ml-auto text-teal">{s.stage}, no activity for {days} days. Time to follow up?</span>
           </Link>); })}

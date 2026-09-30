@@ -8,6 +8,7 @@ import PrepView from '../components/PrepView';
 import JobDeck from '../components/JobDeck';
 import FindPeople from '../components/FindPeople';
 import ResumeEditor from '../components/ResumeEditor';
+import CompanyLogo from '../components/CompanyLogo';
 import { stageInfo, type Lane } from '../types';
 import type { Deck, Job, JobAction, JobContact, JobDoc, JobEmail, JobNote, LibItem } from '../types';
 
@@ -41,14 +42,6 @@ function TextBlock({ label, value, onSave, rows = 8, placeholder }: { label: str
       <textarea className="input font-mono text-[13px] leading-relaxed" rows={rows} value={v} placeholder={placeholder} onChange={(e) => setV(e.target.value)} onBlur={() => v !== value && onSave(v)} />
     </div>
   );
-}
-
-function CompanyLogo({ domain, name }: { domain?: string; name: string }) {
-  const [bad, setBad] = useState(false);
-  useEffect(() => setBad(false), [domain]);
-  const box = 'grid place-items-center w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white shrink-0 overflow-hidden shadow-md';
-  if (domain && !bad) return <div className={box}><img src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=128`} alt="" className="w-10 h-10 sm:w-12 sm:h-12 object-contain" onError={() => setBad(true)} /></div>;
-  return <div className={`${box} font-display text-3xl font-bold text-navy`}>{(name || '?').trim().charAt(0).toUpperCase()}</div>;
 }
 
 export default function JobDetail() {

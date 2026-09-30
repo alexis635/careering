@@ -3,7 +3,10 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Plus, ArrowLeft, Archive, Trash2, RotateCcw, Pencil } from 'lucide-react';
 import { api } from '../api';
 import FitBadge from '../components/FitBadge';
+import CompanyLogo from '../components/CompanyLogo';
 import { FREELANCE_PRESET, LANE_COLORS, OUTCOMES, STAGES, stageInfo, type Job, type Lane, type Stage } from '../types';
+
+const logoTried = new Set<number>();   // one lookup attempt per job per visit to the app
 
 export default function LaneView() {
   const { id } = useParams();
@@ -32,6 +35,23 @@ export default function LaneView() {
     api.get<Job[]>(`jobs?lane_id=${id}`).then(setJobs);
   };
   useEffect(load, [id]);
+  // Find company websites in the background, one at a time, so logos fill in without any clicking.
+  useEffect(() => {
+    const todo = jobs.filter((j) => j.type !== 'logistics' && j.company?.trim() && !j.company_domain && !logoTried.has(j.id)).slice(0, 12);
+    if (!todo.length) return;
+    let cancelled = false;
+    (async () => {
+      for (const j of todo) {
+        if (cancelled) return;
+        logoTried.add(j.id);
+        try {
+          const r = await api.post<Job>(`jobs/${j.id}/logo`);
+          if (!cancelled && r.company_domain) setJobs((js) => js.map((x) => (x.id === j.id ? { ...x, company_domain: r.company_domain } : x)));
+        } catch { /* no icon found: keep the letter */ }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [jobs.length, id]);
 
   async function addJob(e: React.FormEvent) {
     e.preventDefault();
@@ -232,9 +252,12 @@ export default function LaneView() {
               <div className="space-y-2 min-h-8">
                 {col.map((j) => (
                   <div key={j.id} draggable onDragStart={() => setDragId(j.id)} className="card p-3 cursor-grab active:cursor-grabbing" style={{ borderLeft: `4px solid ${lane.color}` }}>
-                    <Link to={`/jobs/${j.id}`} className="block">
-                      <div className="font-medium leading-snug">{j.company || 'Untitled'}</div>
-                      <div className="text-sm text-teal leading-snug">{j.role_title}</div>
+                    <Link to={`/jobs/${j.id}`} className="flex items-center gap-2.5">
+                      {j.type !== 'logistics' && <CompanyLogo size="sm" domain={j.company_domain} name={j.company} />}
+                      <span className="min-w-0">
+                        <span className="block font-medium leading-snug">{j.company || 'Untitled'}</span>
+                        <span className="block text-sm text-teal leading-snug">{j.role_title}</span>
+                      </span>
                     </Link>
                     <div className="mt-2 flex items-center gap-1.5 flex-wrap">
                       <FitBadge fit={j.fit} />
