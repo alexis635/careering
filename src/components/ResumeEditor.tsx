@@ -82,9 +82,11 @@ export default function ResumeEditor({ text, onChange }: { text: string; onChang
   const [raw, setRaw] = useState(false);
   // The form keeps its own copy so blank new bullets and entries survive; it re-reads the text only when it changes from outside.
   const [model, setModel] = useState<Model>(() => parseModel(text));
-  const written = useRef(writeModel(parseModel(text)));
-  if (text !== written.current && writeModel(model) !== text) { const m = parseModel(text); written.current = writeModel(m); setModel(m); }
-  const commit = (m: Model) => { const t = writeModel(m); written.current = t; setModel(m); onChange(t); };
+  // Last text this editor saw or emitted. Compared against the raw prop (not a normalized copy), so text that
+  // doesn't round-trip exactly (typical for AI drafts) can't trigger a re-parse on every render.
+  const seen = useRef(text);
+  if (text !== seen.current) { seen.current = text; setModel(parseModel(text)); }
+  const commit = (m: Model) => { const t = writeModel(m); seen.current = t; setModel(m); onChange(t); };
   const setSec = (si: number, fn: (s: Section) => Section) => commit({ ...model, sections: model.sections.map((s, i) => (i === si ? fn(s) : s)) });
   const setNode = (si: number, ni: number, fn: (n: Node) => Node) => setSec(si, (s) => ({ ...s, nodes: s.nodes.map((n, i) => (i === ni ? fn(n) : n)) }));
   const newEntry = (): Node => ({ k: 'entry', left: '', right: '', sub: '', bullets: [''] });
