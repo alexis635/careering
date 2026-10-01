@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Send, Sparkles } from 'lucide-react';
 import { api } from '../api';
-import type { AngleFocus, AngleMsg, Job, Win } from '../types';
+import type { AngleFocus, AngleMsg, Job, Story, Win } from '../types';
 
 interface RoleRow { id: number; employer: string; title: string; start_date: string | null; end_date: string | null }
 const yr = (d: string | null) => (d ? d.slice(0, 4) : '');
@@ -11,6 +11,8 @@ export default function AngleCard({ job, save, setJob }: { job: Job; save: (p: P
   const [angle, setAngle] = useState(job.angle ?? '');
   const [roles, setRoles] = useState<RoleRow[]>([]);
   const [wins, setWins] = useState<Win[]>([]);
+  const [stories, setStories] = useState<Story[]>([]);
+  const [saved, setSaved] = useState('');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -21,6 +23,7 @@ export default function AngleCard({ job, save, setJob }: { job: Job; save: (p: P
   useEffect(() => {
     api.get<RoleRow[]>('roles').then(setRoles).catch(() => {});
     api.get<Win[]>('wins').then(setWins).catch(() => {});
+    api.get<Story[]>('stories').then(setStories).catch(() => {});
   }, []);
 
   const pickedRole = (id: number) => focus.roles?.find((r) => r.id === id);
@@ -42,6 +45,22 @@ export default function AngleCard({ job, save, setJob }: { job: Job; save: (p: P
     try { setJob(await api.post<Job>('ai/angle-chat', { job_id: job.id, message: text })); setMsg(''); }
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   }
+  async function keep(text: string) {
+    const body = text.trim();
+    if (!body) return;
+    const title = prompt('Give this story a short title', body.replace(/\s+/g, ' ').slice(0, 50));
+    if (title === null) return;
+    try {
+      const s = await api.post<Story>('stories', { title, body, job_id: job.id });
+      setStories((xs) => [s, ...xs]); setSaved('Saved to your story bank.'); setTimeout(() => setSaved(''), 3000);
+    } catch (e: any) { setErr(e.message); }
+  }
+  function useStory(id: string) {
+    const s = stories.find((x) => String(x.id) === id);
+    if (!s) return;
+    const next = angle.trim() ? `${angle.trim()}\n\n${s.body}` : s.body;
+    setAngle(next); save({ angle: next });
+  }
   const lastIdea = [...chat].reverse().find((m) => m.role === 'assistant' && m.angle)?.angle;
 
   return (
@@ -54,6 +73,16 @@ export default function AngleCard({ job, save, setJob }: { job: Job; save: (p: P
       <div>
         <label className="label">Why I fit</label>
         <textarea className="input leading-relaxed" rows={4} value={angle} placeholder="For example: I ran a program like this at X, so I already know the part of the job they find hardest." onChange={(e) => setAngle(e.target.value)} onBlur={() => angle !== (job.angle ?? '') && save({ angle })} />
+        <div className="flex flex-wrap items-center gap-3 mt-1.5">
+          {stories.length > 0 && (
+            <select className="input w-auto text-sm" value="" onChange={(e) => useStory(e.target.value)}>
+              <option value="">Add from my story bank…</option>
+              {stories.map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
+            </select>
+          )}
+          {angle.trim() && <button className="text-xs text-teal underline" onClick={() => keep(angle)}>Save this to my story bank</button>}
+          {saved && <span className="text-xs text-teal">{saved}</span>}
+        </div>
       </div>
 
       <div>
@@ -100,6 +129,7 @@ export default function AngleCard({ job, save, setJob }: { job: Job; save: (p: P
             {chat.map((m, i) => (
               <div key={i} className={`rounded-xl px-3 py-2 text-sm leading-relaxed ${m.role === 'user' ? 'bg-sky/50 ml-8' : 'bg-beige mr-8'}`}>
                 <p className="whitespace-pre-wrap">{m.text}</p>
+                {m.role === 'user' && m.text.length > 60 && <button className="text-xs text-teal underline mt-1" onClick={() => keep(m.text)}>Save to my story bank</button>}
                 {m.role === 'assistant' && !!m.unsupported?.length && (
                   <ul className="list-disc pl-5 mt-2 text-teal">{m.unsupported.map((u, j) => <li key={j}>{u}</li>)}</ul>
                 )}

@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Sparkles, TrendingUp } from 'lucide-react';
 import Wins from '../components/Wins';
+import Stories from '../components/Stories';
 import RolesPay from '../components/RolesPay';
 import DecksList from '../components/DecksList';
 import { PageHero } from '../components/ui';
 
-const TABS = [['wins', 'Wins'], ['roles', 'Roles and pay'], ['decks', 'Decks'], ['case', 'Build my case']] as const;
+const TABS = [['wins', 'Wins'], ['stories', 'Stories'], ['roles', 'Roles and pay'], ['decks', 'Decks'], ['case', 'Build my case']] as const;
 type Tab = (typeof TABS)[number][0];
 
 export default function Rise() {
@@ -22,6 +23,7 @@ export default function Rise() {
         ))}
       </div>
       {tab === 'wins' && <Wins />}
+      {tab === 'stories' && <Stories />}
       {tab === 'roles' && <RolesPay />}
       {tab === 'decks' && <DecksList />}
       {tab === 'case' && (

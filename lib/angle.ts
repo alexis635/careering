@@ -1,5 +1,6 @@
 import { q } from './db.js';
 import { HttpError, ask, libraryContext, parseJson } from './ai.js';
+import { storiesContext } from './stories.js';
 
 const fmtDate = (d: any) => (d instanceof Date ? d.toISOString() : d ? String(d) : '').slice(0, 7);
 
@@ -9,7 +10,8 @@ export async function angleContext(job: any): Promise<string> {
   const focus = job.angle_focus || {};
   const roleIds: number[] = (focus.roles || []).map((r: any) => Number(r.id));
   const winIds: number[] = (focus.wins || []).map(Number);
-  if (!angle && !roleIds.length && !winIds.length) return '';
+  const stories = await storiesContext();
+  if (!angle && !roleIds.length && !winIds.length) return stories;
   const roles = roleIds.length ? await q(`SELECT id, employer, title, start_date, end_date FROM roles WHERE id = ANY($1) AND deleted_at IS NULL`, [roleIds]) : [];
   const wins = winIds.length ? await q(`SELECT title, employer, role, description, impact FROM wins WHERE id = ANY($1) AND deleted_at IS NULL`, [winIds]) : [];
   const lines: string[] = [
@@ -25,6 +27,7 @@ export async function angleContext(job: any): Promise<string> {
     }
   }
   if (wins.length) lines.push(`SPECIFIC WINS SHE WANTS INCLUDED:\n${wins.map((w: any) => `- ${w.title} (${[w.employer, w.role].filter(Boolean).join(', ')}): ${w.description}${w.impact ? ` Result: ${w.impact}` : ''}`).join('\n')}`);
+  if (stories) lines.push(stories);
   return lines.join('\n');
 }
 

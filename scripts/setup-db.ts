@@ -99,6 +99,16 @@ const statements = [
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS posting_parsed JSONB`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS company_domain TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE job_contacts ADD COLUMN IF NOT EXISTS notes TEXT NOT NULL DEFAULT ''`,
+  `CREATE TABLE IF NOT EXISTS stories (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    employer TEXT NOT NULL DEFAULT '',
+    job_id INT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at TIMESTAMPTZ
+  )`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS fit TEXT`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS angle TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS angle_focus JSONB NOT NULL DEFAULT '{}'`,

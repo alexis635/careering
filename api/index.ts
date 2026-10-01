@@ -13,6 +13,7 @@ import { hunterFind, hunterUsage } from '../lib/hunter.js';
 import { resolveLogo } from '../lib/logo.js';
 import * as cases from '../lib/cases.js';
 import * as roles from '../lib/roles.js';
+import * as stories from '../lib/stories.js';
 import * as decks from '../lib/decks.js';
 import * as thrive from '../lib/thrive.js';
 import * as lessons from '../lib/lessons.js';
@@ -221,6 +222,13 @@ export async function route(c: Ctx): Promise<Result> {
     if (c2 && d === 'restore' && c.method === 'POST') return { json: (await vault.restoreDoc(did))[0] };
     if (c2 && !d && c.method === 'PATCH') return { json: await vault.updateDoc(did, c.body) };
     if (c2 && !d && c.method === 'DELETE') { await vault.trashDoc(did); return { json: { ok: true, trashed: true } }; }
+  }
+  if (a === 'stories') {
+    if (!b && c.method === 'GET') return { json: await stories.listStories(c.query.get('deleted') === '1') };
+    if (!b && c.method === 'POST') return { json: await stories.createStory(c.body) };
+    if (b && c2 === 'restore' && c.method === 'POST') return { json: await stories.restoreStory(id) };
+    if (b && !c2 && c.method === 'PATCH') return { json: await stories.updateStory(id, c.body) };
+    if (b && !c2 && c.method === 'DELETE') { await stories.trashStory(id); return { json: { ok: true, trashed: true } }; }
   }
   if (a === 'wins') {
     if (!b && c.method === 'GET') return { json: await vault.listWins(c.query.get('deleted') === '1') };

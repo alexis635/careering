@@ -72,3 +72,5 @@ export const FREELANCE_PRESET: StagesConfig = {
   stages: [{ key: 'Saved', label: 'Lead' }, { key: 'Applied', label: 'Pitched' }, { key: 'Screening', label: 'In conversation' }, { key: 'Offer', label: 'Negotiating' }, { key: 'Closed', label: 'Closed' }],
   outcomes: { Won: 'Contracted', Lost: 'Passed', Withdrawn: 'Withdrawn' },
 };
+
+export interface Story { id: number; title: string; body: string; employer: string; job_id: number | null; job_label?: string | null; created_at: string; updated_at: string; deleted_at?: string | null }

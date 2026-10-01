@@ -78,7 +78,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
           'summary (3-4 sentence honest fit assessment), strengths (string[] of requirements the material clearly supports), gaps (string[] of requirements it does not support), ' +
           'suggested_resume_id (number id of the best RESUME VERSION as shown in [#id], or null if none fit), ' +
           'fit (exactly one of "strong", "moderate", "weak": strong = most requirements clearly supported, weak = core requirements unsupported). Rate fit ONLY on the candidate material, never on her angle.' +
-          (angle ? ' Also include angle_read (3 to 5 sentences): an honest read of her stated angle. Which parts the material backs up, which parts are only her own word or are not in her record yet and what to add to make them defensible, and how well the angle answers the posting\'s top needs. Be kind and straight.' : ''),
+          (job.angle?.trim() ? ' Also include angle_read (3 to 5 sentences): an honest read of her stated angle. Which parts the material backs up, which parts are only her own word or are not in her record yet and what to add to make them defensible, and how well the angle answers the posting\'s top needs. Be kind and straight.' : ''),
         `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nCANDIDATE MATERIAL:\n${lib.text}${angleBlock}`,
       ),
     );
@@ -86,7 +86,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
     const valid = lib.resumes.some((r: any) => r.id === out.suggested_resume_id);
     const fit = ['strong', 'moderate', 'weak'].includes(out.fit) ? out.fit : null;
     return (
-      await q(`UPDATE jobs SET match_notes=$1, resume_version_id=COALESCE($2, resume_version_id), fit=COALESCE($3, fit), angle_check=$5, updated_at=now() WHERE id=$4 RETURNING *`, [notes, valid ? out.suggested_resume_id : null, fit, jobId, angle ? noDash(String(out.angle_read || '')) : ''])
+      await q(`UPDATE jobs SET match_notes=$1, resume_version_id=COALESCE($2, resume_version_id), fit=COALESCE($3, fit), angle_check=$5, updated_at=now() WHERE id=$4 RETURNING *`, [notes, valid ? out.suggested_resume_id : null, fit, jobId, job.angle?.trim() ? noDash(String(out.angle_read || '')) : ''])
     )[0];
   }
 
