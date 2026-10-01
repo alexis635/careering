@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { q } from '../lib/db.js';
 import { deepNoDash } from '../src/lib/noDash.js';
 import { aiRoute } from '../lib/ai-routes.js';
+import { ensureAdvisorColumns } from '../lib/advisor.js';
 import { attention } from '../lib/attention.js';
 import { search } from '../lib/search.js';
 import { HttpError } from '../lib/ai.js';
@@ -31,7 +32,7 @@ const JOB_FIELDS = [
   'lane_id', 'type', 'company', 'role_title', 'source_link', 'stage', 'closed_outcome',
   'salary_range', 'location', 'remote_type', 'applied_date', 'deadline', 'interview_dates',
   'contact_person', 'contact_notes', 'posting_text', 'match_notes', 'resume_version_id',
-  'interview_prep', 'fit', 'angle', 'angle_focus', 'angle_chat',
+  'interview_prep', 'fit', 'angle', 'angle_focus', 'angle_chat', 'advisor_notes', 'advisor_tone',
 ];
 const LANE_FIELDS = ['name', 'start_date', 'target_date', 'status', 'notes', 'color', 'position', 'stages_config'];
 const JSON_FIELDS = ['interview_dates', 'stages_config', 'angle_focus', 'angle_chat'];
@@ -135,7 +136,7 @@ export async function route(c: Ctx): Promise<Result> {
     }
     if (b && c2 === 'logo' && c.method === 'POST') return { json: await resolveLogo(id) };
     if (b && !c2) {
-      if (c.method === 'GET') return { json: (await q(`SELECT * FROM jobs WHERE id=$1`, [id]))[0] ?? null };
+      if (c.method === 'GET') { await ensureAdvisorColumns(); return { json: (await q(`SELECT * FROM jobs WHERE id=$1`, [id]))[0] ?? null }; }
       if (c.method === 'PATCH') {
         if (c.body.stage && !STAGES.includes(c.body.stage)) return { status: 400, json: { error: 'bad stage' } };
         const s = buildUpdate('jobs', JOB_FIELDS, id, c.body, true);

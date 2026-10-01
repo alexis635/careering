@@ -3,7 +3,8 @@ import { fetchPosting } from './posting.js';
 import { caseRoute } from './cases.js';
 import { deckAngles, deckRoute } from './decks.js';
 import { lessonRoute } from './lessons.js';
-import { angleChat, angleContext } from './angle.js';
+import { angleChat } from './angle.js';
+import { advisorChat, jobBrief } from './advisor.js';
 import { findPeople } from './people.js';
 import { search } from './search.js';
 import { noDash } from '../src/lib/noDash.js';
@@ -60,8 +61,9 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
     return parseJob(updated, text);
   }
   if (action === 'angle-chat') return angleChat(body as any, job);
+  if (action === 'advisor-chat') return advisorChat(body as any, job);
   const posting = postingOrThrow(job);
-  const angle = await angleContext(job);
+  const angle = await jobBrief(job);
   const angleBlock = angle ? `\n\n${angle}` : '';
 
   // 1. Posting parser

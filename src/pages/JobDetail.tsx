@@ -5,18 +5,19 @@ import { ArrowLeft, Download, ExternalLink, Mail, Paperclip, Plus, Sparkles, Tra
 import { api } from '../api';
 import FitBadge from '../components/FitBadge';
 import AngleCard from '../components/AngleCard';
+import AdvisorTab from '../components/AdvisorTab';
 import PrepView from '../components/PrepView';
 import JobDeck from '../components/JobDeck';
 import FindPeople from '../components/FindPeople';
 import ResumeEditor from '../components/ResumeEditor';
 import CompanyLogo from '../components/CompanyLogo';
 import { stageInfo, type Lane } from '../types';
-import type { Deck, Job, JobAction, JobContact, JobDoc, JobEmail, JobNote, LibItem } from '../types';
+import type { AdvisorSuggestion, Deck, Job, JobAction, JobContact, JobDoc, JobEmail, JobNote, LibItem } from '../types';
 
-const TABS = ['Overview', 'Contacts', 'Emails', 'Documents', 'Interview Prep', 'Interview deck', 'Portfolio', 'Notes Log', 'Next Actions'] as const;
+const TABS = ['Advisor', 'Overview', 'Contacts', 'Emails', 'Documents', 'Interview Prep', 'Interview deck', 'Portfolio', 'Notes Log', 'Next Actions'] as const;
 // The sidebar groups the tabs by what you are doing; the tab names stay the same so old links still work.
 const NAV: { title: string; tabs: { key: (typeof TABS)[number]; label: string }[] }[] = [
-  { title: 'The job', tabs: [{ key: 'Overview', label: 'Overview' }, { key: 'Contacts', label: 'People' }] },
+  { title: 'The job', tabs: [{ key: 'Advisor', label: 'Advisor' }, { key: 'Overview', label: 'Overview' }, { key: 'Contacts', label: 'People' }] },
   { title: 'Apply', tabs: [{ key: 'Documents', label: 'Resume and letters' }, { key: 'Portfolio', label: 'Portfolio concept' }, { key: 'Emails', label: 'Emails' }, { key: 'Next Actions', label: 'Next steps' }] },
   { title: 'Interview', tabs: [{ key: 'Interview Prep', label: 'Prep sheet' }, { key: 'Interview deck', label: 'Deck' }] },
   { title: 'Record', tabs: [{ key: 'Notes Log', label: 'Notes' }] },
@@ -186,6 +187,18 @@ export default function JobDetail() {
       else { loadKids(); setTab('Documents'); setOpenDoc(out.id); }
     } catch (e: any) { setAiErr(e.message); } finally { setBusy(null); }
   }
+  /** One click draft from the advisor: saves a versioned document and hands it back so the advisor can link to it. */
+  async function advisorGenerate(s: AdvisorSuggestion): Promise<JobDoc> {
+    const c = contacts.find((x) => x.id === s.contact_id);
+    const doc = await api.post<JobDoc>(`ai/${s.kind === 'resume' ? 'tailor' : s.kind}`, { job_id: Number(id), instructions: s.instructions, contact_name: c?.name, contact_title: c?.title });
+    loadKids();
+    return doc;
+  }
+  function advisorOpen(m: { kind: AdvisorSuggestion['kind']; doc: JobDoc; contact?: JobContact }) {
+    if (m.kind === 'prep') { setPrepVer(m.doc.id); setTab('Interview Prep'); }
+    else if (m.kind === 'resume' || m.kind === 'cover_letter') { setTab('Documents'); setOpenDoc(m.doc.id); }
+    else useInEmail(m.doc, m.contact?.email);
+  }
   /** Fetch (if needed), read, and compare in one go. */
   async function analyze() {
     setBusy('analyze'); setAiErr('');
@@ -248,6 +261,7 @@ export default function JobDetail() {
         </div>
       </nav>
       <div className="flex-1 min-w-0">
+      {tab === 'Advisor' && <AdvisorTab job={job} setJob={setJob} save={save} contacts={contacts} generate={advisorGenerate} openMade={advisorOpen} />}
       {tab === 'Overview' && (
         <div className="space-y-5">
           <details className="card group">
