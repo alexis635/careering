@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { ArrowLeft, Download, ExternalLink, Mail, Paperclip, Plus, Sparkles, Trash2, X } from 'lucide-react';
 import { api } from '../api';
 import FitBadge from '../components/FitBadge';
+import AngleCard from '../components/AngleCard';
 import PrepView from '../components/PrepView';
 import JobDeck from '../components/JobDeck';
 import FindPeople from '../components/FindPeople';
@@ -211,6 +212,7 @@ export default function JobDetail() {
           <div className="flex flex-wrap items-center gap-2 mt-3 text-xs">
             <span className="rounded-full bg-beige text-navy px-2.5 py-1 font-semibold">{job.closed_outcome ? stageInfo(lane).outcome(job.closed_outcome) : stageInfo(lane).label(job.stage)}</span>
             {job.fit && <FitBadge fit={job.fit} />}
+            {job.angle?.trim() && <span className="rounded-full bg-white/15 px-2.5 py-1 text-white">Your angle is set</span>}
             {job.deadline && <span className="rounded-full bg-white/15 px-2.5 py-1 text-white">Deadline {format(new Date(job.deadline.slice(0, 10) + 'T12:00:00'), 'MMM d')}</span>}
             {[job.location, job.remote_type].filter(Boolean).length > 0 && <span className="text-sky">{[job.location, job.remote_type].filter(Boolean).join(' · ')}</span>}
           </div>
@@ -295,6 +297,7 @@ export default function JobDetail() {
                 </div>
                 <TextBlock label="Match notes" value={job.match_notes} onSave={(v) => save({ match_notes: v })} rows={8} />
               </div>
+              <AngleCard job={job} save={save} setJob={setJob} />
               <details className="card group" open={!job.posting_text.trim()}>
                 <summary className="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between text-sm font-medium">
                   <span>Full posting</span>
@@ -437,6 +440,7 @@ export default function JobDetail() {
             <div className="card p-4 space-y-3">
               <div className="flex flex-wrap gap-2 items-center">
                 <span className="label mb-0 mr-1">Draft with AI</span>
+                {(job.angle?.trim() || job.angle_focus?.roles?.length || job.angle_focus?.wins?.length) ? <span className="text-xs text-teal">Built around your angle</span> : null}
                 <button className="btn" disabled={!!busy} onClick={() => ai('tailor', { instructions })}><Sparkles size={14} /> {busy === 'tailor' ? 'Writing…' : 'Tailored resume'}</button>
                 <button className="btn" disabled={!!busy} onClick={() => ai('cover_letter', { instructions })}><Sparkles size={14} /> {busy === 'cover_letter' ? 'Writing…' : 'Cover letter'}</button>
                 <button className="btn" disabled={!!busy} onClick={() => ai('outreach', { instructions, contact_name: job.contact_person })}><Sparkles size={14} /> {busy === 'outreach' ? 'Writing…' : 'Outreach email'}</button>

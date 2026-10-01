@@ -10,6 +10,8 @@ export interface Lane {
   notes: string; color: string; position: number; archived_at?: string | null; deleted_at?: string | null;
   counts?: { stage: Stage; n: number }[];
 }
+export interface AngleFocus { roles?: { id: number; note: string }[]; wins?: number[] }
+export interface AngleMsg { role: 'user' | 'assistant'; text: string; angle?: string; unsupported?: string[] }
 export interface Job {
   id: number; lane_id: number; type: 'application' | 'logistics'; company: string; role_title: string;
   source_link: string; stage: Stage; closed_outcome: string | null; salary_range: string; location: string;
@@ -17,6 +19,7 @@ export interface Job {
   contact_notes: string; company_domain?: string; posting_text: string; match_notes: string; interview_prep: string;
   resume_version_id: number | null; updated_at: string;
   fit: 'strong' | 'moderate' | 'weak' | null;
+  angle: string; angle_focus: AngleFocus; angle_chat: AngleMsg[]; angle_check: string;
   posting_parsed: { summary?: string; requirements?: string[]; nice_to_haves?: string[]; keywords?: string[] } | null;
 }
 export interface JobDoc { id: number; kind: string; title: string; body: string; version: number; source: string; created_at: string }

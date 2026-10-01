@@ -30,10 +30,10 @@ const JOB_FIELDS = [
   'lane_id', 'type', 'company', 'role_title', 'source_link', 'stage', 'closed_outcome',
   'salary_range', 'location', 'remote_type', 'applied_date', 'deadline', 'interview_dates',
   'contact_person', 'contact_notes', 'posting_text', 'match_notes', 'resume_version_id',
-  'interview_prep', 'fit',
+  'interview_prep', 'fit', 'angle', 'angle_focus', 'angle_chat',
 ];
 const LANE_FIELDS = ['name', 'start_date', 'target_date', 'status', 'notes', 'color', 'position', 'stages_config'];
-const JSON_FIELDS = ['interview_dates', 'stages_config'];
+const JSON_FIELDS = ['interview_dates', 'stages_config', 'angle_focus', 'angle_chat'];
 const jsonVal = (f: string, v: any) => (JSON_FIELDS.includes(f) && v !== null && v !== undefined ? JSON.stringify(v) : v);
 const LIB_FIELDS = ['kind', 'title', 'body', 'tags'];
 

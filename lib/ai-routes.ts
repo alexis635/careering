@@ -3,6 +3,7 @@ import { fetchPosting } from './posting.js';
 import { caseRoute } from './cases.js';
 import { deckAngles, deckRoute } from './decks.js';
 import { lessonRoute } from './lessons.js';
+import { angleChat, angleContext } from './angle.js';
 import { findPeople } from './people.js';
 import { search } from './search.js';
 import { noDash } from '../src/lib/noDash.js';
@@ -58,7 +59,10 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
     const updated = (await q(`UPDATE jobs SET posting_text=$1, updated_at=now() WHERE id=$2 RETURNING *`, [text, jobId]))[0];
     return parseJob(updated, text);
   }
+  if (action === 'angle-chat') return angleChat(body as any, job);
   const posting = postingOrThrow(job);
+  const angle = await angleContext(job);
+  const angleBlock = angle ? `\n\n${angle}` : '';
 
   // 1. Posting parser
   if (action === 'parse') return parseJob(job, posting);
@@ -68,20 +72,21 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
 
   // 2. Match / gap check
   if (action === 'match') {
-    const out = parseJson<{ summary: string; strengths: string[]; gaps: string[]; suggested_resume_id: number | null; fit: string }>(
+    const out = parseJson<{ summary: string; strengths: string[]; gaps: string[]; suggested_resume_id: number | null; fit: string; angle_read?: string }>(
       await ask(
         'Compare the job posting to the candidate material. Respond with ONLY a JSON object: ' +
           'summary (3-4 sentence honest fit assessment), strengths (string[] of requirements the material clearly supports), gaps (string[] of requirements it does not support), ' +
           'suggested_resume_id (number id of the best RESUME VERSION as shown in [#id], or null if none fit), ' +
-          'fit (exactly one of "strong", "moderate", "weak": strong = most requirements clearly supported, weak = core requirements unsupported).',
-        `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nCANDIDATE MATERIAL:\n${lib.text}`,
+          'fit (exactly one of "strong", "moderate", "weak": strong = most requirements clearly supported, weak = core requirements unsupported). Rate fit ONLY on the candidate material, never on her angle.' +
+          (angle ? ' Also include angle_read (3 to 5 sentences): an honest read of her stated angle. Which parts the material backs up, which parts are only her own word or are not in her record yet and what to add to make them defensible, and how well the angle answers the posting\'s top needs. Be kind and straight.' : ''),
+        `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nCANDIDATE MATERIAL:\n${lib.text}${angleBlock}`,
       ),
     );
     const notes = `${out.summary}\n\nStrengths:\n${out.strengths.map((s) => `- ${s}`).join('\n')}\n\nGaps:\n${out.gaps.map((s) => `- ${s}`).join('\n')}`;
     const valid = lib.resumes.some((r: any) => r.id === out.suggested_resume_id);
     const fit = ['strong', 'moderate', 'weak'].includes(out.fit) ? out.fit : null;
     return (
-      await q(`UPDATE jobs SET match_notes=$1, resume_version_id=COALESCE($2, resume_version_id), fit=COALESCE($3, fit), updated_at=now() WHERE id=$4 RETURNING *`, [notes, valid ? out.suggested_resume_id : null, fit, jobId])
+      await q(`UPDATE jobs SET match_notes=$1, resume_version_id=COALESCE($2, resume_version_id), fit=COALESCE($3, fit), angle_check=$5, updated_at=now() WHERE id=$4 RETURNING *`, [notes, valid ? out.suggested_resume_id : null, fit, jobId, angle ? noDash(String(out.angle_read || '')) : ''])
     )[0];
   }
 
@@ -95,7 +100,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
         'Inside a section, each job or school is one line "### Title | Dates", then one line "> Organization · City, ST", then bullets that each start with "- ". Summary and skills are plain lines. Use the exact titles and dates from the CAREER FACTS bio.\n' +
         'Choose and lightly reword bullets from the BULLET BANK and the chosen resume version so they speak to the posting. Mirror the posting\'s keywords only where the material supports them. Keep facts, dates, and numbers unchanged. Strongest matches first. Must fit one page.' +
         (body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''),
-      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nBASE RESUME FRAMING:\n${framing ? framing.body : '(none chosen, use the bullet bank)'}\n\nCANDIDATE MATERIAL:\n${lib.text}`,
+      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nBASE RESUME FRAMING:\n${framing ? framing.body : '(none chosen, use the bullet bank)'}\n\nCANDIDATE MATERIAL:\n${lib.text}${angleBlock}`,
       9000,
     );
     return saveDoc(jobId, 'resume', `Tailored resume for ${job.company || 'job'}`, text);
@@ -116,7 +121,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
         '## BEFORE THE INTERVIEW\n' +
         '5 short checklist bullets specific to this posting: what to research, what to have ready, logistics.' +
         (body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''),
-      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nMATCH NOTES (strengths and gaps already found):\n${job.match_notes || '(none yet)'}\n\nCANDIDATE MATERIAL:\n${lib.text}\n\nDRAFTS SUBMITTED FOR THIS JOB:\n${sent.map((d: any) => `[${d.kind}] ${d.body}`).join('\n\n') || '(none)'}`,
+      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nMATCH NOTES (strengths and gaps already found):\n${job.match_notes || '(none yet)'}\n\nCANDIDATE MATERIAL:\n${lib.text}\n\nDRAFTS SUBMITTED FOR THIS JOB:\n${sent.map((d: any) => `[${d.kind}] ${d.body}`).join('\n\n') || '(none)'}${angleBlock}`,
       9000,
     );
     return saveDoc(jobId, 'interview_prep', `Interview prep for ${job.company || 'job'}`, text);
@@ -145,7 +150,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
         'The candidate may give a direction (a look, a theme, an idea for how she appears); follow it and build the concept around it. If she gives none, choose the concept yourself. ' +
         'You cannot see images or her files, so describe any imagery as something she will generate or source, never as something that already exists.' +
         (body.instructions ? `\n\nThe candidate's direction: ${body.instructions}` : ''),
-      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nMATCH NOTES:\n${job.match_notes || '(none yet)'}\n\nWINS:\n${winText || '(none logged yet)'}\n\nCANDIDATE MATERIAL:\n${lib.text}`,
+      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nMATCH NOTES:\n${job.match_notes || '(none yet)'}\n\nWINS:\n${winText || '(none logged yet)'}\n\nCANDIDATE MATERIAL:\n${lib.text}${angleBlock}`,
       12000,
     );
     return saveDoc(jobId, 'portfolio_concept', `Portfolio concept for ${job.company || 'job'}`, text);
@@ -164,7 +169,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
     };
     const text = await ask(
       prompts[action],
-      `${jobHeader(job)}\n${who}\nJOB POSTING:\n${posting}\n\n${history}${job.interview_prep ? `INTERVIEW NOTES:\n${job.interview_prep}\n\n` : ''}CANDIDATE MATERIAL:\n${lib.text}${body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''}`,
+      `${jobHeader(job)}\n${who}\nJOB POSTING:\n${posting}\n\n${history}${job.interview_prep ? `INTERVIEW NOTES:\n${job.interview_prep}\n\n` : ''}CANDIDATE MATERIAL:\n${lib.text}${angleBlock}${body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''}`,
       6000,
     );
     const label = action === 'outreach' ? 'Outreach email' : action === 'follow_up' ? 'Follow up email' : 'Thank you email';
@@ -176,7 +181,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
     const text = await ask(
       'Write a cover letter as a finished document. Line 1: the candidate\'s full name. Line 2: contact line (email · phone), both from the CAREER FACTS or base resume, never a location. Then a blank line, then the letter: a greeting ("Dear Hiring Team," if no name is known), 3 short paragraphs totalling 250 to 330 words, and a closing "Sincerely," on its own line followed by the candidate\'s name. ' +
         'Open with a specific hook about the company or role, connect two or three real accomplishments from the candidate material to the posting\'s top needs, close briefly. No "I am writing to apply" opener. Plain paragraphs only, separated by blank lines.',
-      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nCANDIDATE MATERIAL:\n${lib.text}${body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''}`,
+      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nCANDIDATE MATERIAL:\n${lib.text}${angleBlock}${body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''}`,
       6000,
     );
     return saveDoc(jobId, 'cover_letter', `Cover letter for ${job.company || 'job'}`, text);
