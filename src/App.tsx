@@ -19,6 +19,7 @@ import Timeline from './pages/Timeline';
 import ResumeBuilder from './pages/Resume';
 import CaseBuilder from './pages/Case';
 import ArchivePage from './pages/Archive';
+import Noelle from './pages/Noelle';
 
 function Login({ onDone }: { onDone: () => void }) {
   const [pw, setPw] = useState('');
@@ -89,7 +90,7 @@ function areaOf(path: string) {
   return 'pursue';
 }
 const AREA_ICONS = { pursue: Compass, thrive: Sprout, vault: Lock, rise: TrendingUp } as const;
-const PURSUE_LINKS = [['/pursue', 'Overview'], ['/lanes', 'Lanes'], ['/timeline', 'Timeline'], ['/weekly', 'Week'], ['/mail', 'Mail'], ['/resume', 'Resume'], ['/library', 'Library']] as const;
+const PURSUE_LINKS = [['/pursue', 'Overview'], ['/lanes', 'Lanes'], ['/timeline', 'Timeline'], ['/weekly', 'Week'], ['/mail', 'Mail'], ['/resume', 'Resume'], ['/library', 'Library'], ['/noelle', 'Noelle']] as const;
 
 export default function App() {
   const { pathname } = useLocation();
@@ -159,6 +160,7 @@ export default function App() {
           <Route path="/weekly" element={<Weekly />} />
           <Route path="/mail" element={<Mail />} />
           <Route path="/archive" element={<ArchivePage />} />
+          <Route path="/noelle" element={<Noelle />} />
         </Routes>
       </main>
       <footer className="mt-12 mb-16 md:mb-0 border-t border-sky/60 bg-white/60">

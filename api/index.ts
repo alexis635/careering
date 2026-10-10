@@ -22,9 +22,10 @@ import { exportAll } from '../lib/export.js';
 import { cleanStagesConfig } from '../lib/stages.js';
 import { weekly, weeklyFocus, weeklyText } from '../lib/weekly.js';
 import { clearSession, isAuthed, issueSession } from '../lib/auth.js';
+import { agentActivity, handleAgent } from '../lib/agent.js';
 
 type Ctx = { method: string; parts: string[]; body: any; query: URLSearchParams; host: string };
-type Result = { status?: number; json: any; cookie?: string; file?: { name: string; mime: string; data: Buffer } };
+type Result = { status?: number; json: any; headers?: Record<string, string>; cookie?: string; file?: { name: string; mime: string; data: Buffer } };
 
 const STAGES = ['Saved', 'Applied', 'Screening', 'Interviewing', 'Offer', 'Closed'];
 
@@ -339,6 +340,9 @@ export async function route(c: Ctx): Promise<Result> {
   // ---- ai ----
   if (a === 'ai' && b && c.method === 'POST') return { json: await aiRoute(b, c.body) };
 
+  // ---- what Noelle has done (her writes and refused calls) ----
+  if (a === 'noelle' && b === 'activity' && c.method === 'GET') return { json: await agentActivity() };
+
   // ---- library ----
   if (a === 'library') {
     if (!b && c.method === 'GET') {
@@ -379,6 +383,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   const send = (r: Result) => {
     res.statusCode = r.status ?? 200;
     if (r.cookie) res.setHeader('Set-Cookie', r.cookie);
+    for (const [k, v] of Object.entries(r.headers ?? {})) res.setHeader(k, v);
     if (r.file) {   // a private file, only ever served to a signed-in user
       res.setHeader('Content-Type', r.file.mime);
       res.setHeader('Content-Disposition', `attachment; filename="${r.file.name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '')}"`);
@@ -395,6 +400,16 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     url.searchParams.delete('path');
     const parts = orig.split('/').filter(Boolean);
     const method = req.method || 'GET';
+
+    // Noelle's API: her own key, never the session cookie (lib/agent.ts)
+    if (parts[0] === 'agent') {
+      return send(await handleAgent({
+        method, parts: parts.slice(1), query: url.searchParams, headers: req.headers,
+        host: String(req.headers['x-forwarded-host'] || req.headers.host || ''),
+        ip: String(req.headers['x-forwarded-for'] || '').split(',')[0].trim(),
+        readBody: () => readBody(req),
+      }));
+    }
 
     if (parts[0] === 'login' && method === 'POST') {
       const body = await readBody(req);

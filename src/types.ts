@@ -19,7 +19,7 @@ export interface Job {
   source_link: string; stage: Stage; closed_outcome: string | null; salary_range: string; location: string;
   remote_type: string; applied_date: string | null; deadline: string | null; contact_person: string;
   contact_notes: string; company_domain?: string; posting_text: string; match_notes: string; interview_prep: string;
-  resume_version_id: number | null; updated_at: string;
+  resume_version_id: number | null; updated_at: string; created_by?: string;
   fit: 'strong' | 'moderate' | 'weak' | null;
   angle: string; angle_focus: AngleFocus; angle_chat: AngleMsg[]; angle_check: string;
   advisor_chat?: AdvisorMsg[]; advisor_notes?: string; advisor_tone?: string;

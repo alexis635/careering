@@ -110,6 +110,7 @@ const statements = [
     deleted_at TIMESTAMPTZ
   )`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS fit TEXT`,
+  // agent tables (agent_log, agent_requests) and jobs.created_by are created on first use by lib/agent.ts
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS angle TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS angle_focus JSONB NOT NULL DEFAULT '{}'`,
   `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS angle_chat JSONB NOT NULL DEFAULT '[]'`,
