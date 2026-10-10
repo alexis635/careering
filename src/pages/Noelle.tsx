@@ -16,9 +16,10 @@ function Changes({ before, after }: { before: Entry['before']; after: Entry['aft
   if (!before || !after) return null;
   const keys = Object.keys(after).filter((k) => !SKIP.has(k) && JSON.stringify(before[k]) !== JSON.stringify(after[k]));
   if (!keys.length) return null;
+  const show = (v: unknown) => (v === null || v === undefined || v === '' ? 'empty' : String(v));
   return (
     <ul className="mt-1 text-xs text-teal space-y-0.5">
-      {keys.map((k) => <li key={k}><span className="font-medium text-navy">{k}</span>: {String(before[k] ?? 'empty')} → {String(after[k] ?? 'empty')}</li>)}
+      {keys.map((k) => <li key={k}><span className="font-medium text-navy">{k}</span>: {show(before[k])} → {show(after[k])}</li>)}
     </ul>
   );
 }
