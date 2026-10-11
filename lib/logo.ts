@@ -2,7 +2,7 @@ import { HttpError, ask, loadJob } from './ai.js';
 import { q } from './db.js';
 
 // Job boards and applicant systems: a link to one of these says nothing about the company's own website.
-const BOARDS = /(linkedin|indeed|glassdoor|ziprecruiter|paylocity|workday|myworkdayjobs|greenhouse|lever|ashbyhq|icims|smartrecruiters|taleo|jobvite|bamboohr|breezy|applytojob|governmentjobs|edjoin|schoolspring|handshake|wellfound|monster|simplyhired|google|bit\.ly)\./i;
+const BOARDS = /(linkedin|indeed|glassdoor|ziprecruiter|paylocity|workday|myworkdayjobs|greenhouse|lever|ashbyhq|icims|smartrecruiters|taleo|jobvite|bamboohr|breezy|applytojob|governmentjobs|edjoin|schoolspring|handshake|wellfound|monster|simplyhired|google|bit\.ly|builtin|careercartz|adp|workforcenow|levels|rippling|workable|jazzhr|recruitee|teamtailor|dover|pinpointhq|ultipro|ukg|successfactors|oraclecloud)\./i;
 const DOMAIN = /^(?!-)[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/;
 
 const clean = (d: string) => d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split(/[\/?#\s]/)[0];

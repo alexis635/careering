@@ -98,7 +98,17 @@ export async function enrichJob(id: number): Promise<{ ok: boolean; reason?: str
         return { ok: false, reason: e?.message || 'fetch failed' };
       }
     }
-    if (text.trim()) await parseJob(job, text);
+    if (text.trim()) {
+      try {
+        await parseJob(job, text);
+      } catch (e: any) {
+        // Read fine but no posting in it: usually closed, or the page builds itself with scripts.
+        await q(`INSERT INTO job_notes (job_id, body, kind) VALUES ($1, $2, 'Careering')`,
+          [id, `Careering read this link but couldn't find a job posting in it. The posting may have closed, or the page only loads in a browser. Check the link, and paste the posting text on the Overview tab if it's still open.`]);
+        await resolveLogo(id).catch(() => {});
+        return { ok: false, reason: e?.message || 'no posting found' };
+      }
+    }
     await aiRoute('match', { job_id: id }).catch((e) => console.warn('enrich match skipped', id, e?.message));
     await resolveLogo(id).catch(() => {});
     return { ok: true };
