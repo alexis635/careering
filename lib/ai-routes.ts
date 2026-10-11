@@ -14,7 +14,7 @@ type Body = { job_id?: number; instructions?: string; kind?: string; contact_nam
 
 const jobHeader = (j: any) => `Company: ${j.company}\nRole: ${j.role_title}\nLocation: ${j.location} ${j.remote_type}`.trim();
 
-async function parseJob(job: any, posting: string) {
+export async function parseJob(job: any, posting: string) {
   const jobId = job.id;
   const out = parseJson<any>(
     await ask(

@@ -5,6 +5,11 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { q } from './db.js';
 import { deepNoDash } from '../src/lib/noDash.js';
+import { waitUntil } from '@vercel/functions';
+import { aiRoute, parseJob } from './ai-routes.js';
+import { fetchPosting } from './posting.js';
+import { resolveLogo } from './logo.js';
+import { loadJob } from './ai.js';
 
 type Out = { status?: number; json: any; headers?: Record<string, string> };
 type Req = { method: string; parts: string[]; query: URLSearchParams; headers: Record<string, any>; host: string; ip: string; readBody: () => Promise<any> };
@@ -73,6 +78,35 @@ export function normalizeUrl(raw: string): string {
   }
 }
 const sameName = (a: string, b: string) => a.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() === b.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+// ---- enrichment: the same steps the app runs when Alexis adds a job by link ----
+// Read the posting (or use the text Noelle sent), parse it into the overview,
+// rate the fit against the Library, find the logo. Runs after the response
+// (waitUntil) because the AI steps can take a minute.
+export async function enrichJob(id: number): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    let job = await loadJob(id);
+    let text: string = job.posting_text ?? '';
+    if (!text.trim() && job.source_link) {
+      try {
+        text = await fetchPosting(job.source_link);
+        job = (await q(`UPDATE jobs SET posting_text=$1, updated_at=now() WHERE id=$2 RETURNING *`, [text, id]))[0];
+      } catch (e: any) {
+        await q(`INSERT INTO job_notes (job_id, body, kind) VALUES ($1, $2, 'Careering')`,
+          [id, `Couldn't read this posting automatically (${e?.message || 'the site blocked it'}). Paste the posting text on the Overview tab to fill in the overview and fit.`]);
+        await resolveLogo(id).catch(() => {});
+        return { ok: false, reason: e?.message || 'fetch failed' };
+      }
+    }
+    if (text.trim()) await parseJob(job, text);
+    await aiRoute('match', { job_id: id }).catch((e) => console.warn('enrich match skipped', id, e?.message));
+    await resolveLogo(id).catch(() => {});
+    return { ok: true };
+  } catch (e: any) {
+    console.error('enrichJob failed', id, e);
+    return { ok: false, reason: e?.message };
+  }
+}
 
 // ---- reading jobs in the API shape ----
 const JOB_SELECT = `
@@ -203,6 +237,7 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
     for (const [f, col] of Object.entries(WRITABLE)) if (f in body) { cols.push(col); vals.push(colVal(f, body[f])); }
     const row = (await q(`INSERT INTO jobs (${cols.join(', ')}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING id`, vals))[0];
     const job = await getJob(row.id, r.host);
+    waitUntil(enrichJob(row.id));
     return { ...ok(job, 201), audit: { job_id: row.id, summary: `Added ${job.company}, ${job.title} to Saved in ${lane.name}`, after: job } };
   }
 
@@ -238,6 +273,8 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
     await q(`UPDATE jobs SET ${sets.join(', ')}, updated_at = now() WHERE id = $${vals.length}`, vals);
     const after = await getJob(id, r.host, true);
     const changed = Object.keys(body).join(', ');
+    // New posting text or link: re-read and re-parse so the overview and fit stay in step.
+    if ('posting_text' in body || 'posting_url' in body) waitUntil(enrichJob(id));
     return { ...ok(after), audit: { job_id: id, summary: `Updated ${after.company}, ${after.title}: ${changed}`, before, after } };
   }
 
