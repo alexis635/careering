@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { q } from './db.js';
-import { noDash } from '../src/lib/noDash.js';
+import { deepNoDash, noDash } from '../src/lib/noDash.js';
 
 export const MODEL = process.env.CAREERING_MODEL || 'claude-sonnet-5';
 
@@ -18,6 +18,7 @@ const GROUNDING =
   'Never invent employers, titles, dates, metrics, degrees, or skills. If the material does not support a requirement, say so plainly instead of stretching. ' +
   'When you cite a number, keep exactly what it measures (say "benefits enrollment", never just "enrollment"; "100+ schools", never "100+ locations"). ' +
   'Never state or imply where the candidate currently lives or is based. ' +
+  'You are on her side: present her as the strongest honest candidate. She is a senior professional; lead with her total years and her scope (teams, budgets, reach, revenue) and treat every role, including short media and entertainment engagements, as professional work. Never write the words "intern" or "internship" in anything she will send (the California credential name "Intern Permit" is the only exception). Follow the RESUME LAYOUT RULES in the CAREER FACTS. ' +
   'Write in a natural, direct voice. Avoid filler and buzzwords. ' +
   'NEVER use em dashes or en dashes anywhere in your output. Use commas, periods, colons, or the word "to" for ranges (for example "Apr 2023 to May 2026").';
 
@@ -33,6 +34,22 @@ export async function ask(system: string, user: string, maxTokens = 6000): Promi
   if (!text) throw new HttpError(502, 'The AI returned nothing this time. Please try again.');
   if (res.stop_reason === 'max_tokens') throw new HttpError(502, 'The AI ran out of room before finishing. Please try again.');
   return text;
+}
+
+/** Structured answer through a tool call, so long JSON with quotes in it always arrives well formed. Dashes are scrubbed from every string. */
+export async function askJson<T>(system: string, user: string, schema: Record<string, any>, maxTokens = 12000): Promise<T> {
+  const res = await client().messages.create({
+    model: MODEL,
+    max_tokens: Math.max(maxTokens, 6000),
+    system: `${GROUNDING}\n\n${system}`,
+    tools: [{ name: 'answer', description: 'Return the answer.', input_schema: { type: 'object', ...schema } as any }],
+    tool_choice: { type: 'tool', name: 'answer' },
+    messages: [{ role: 'user', content: user }],
+  });
+  if (res.stop_reason === 'max_tokens') throw new HttpError(502, 'The AI ran out of room before finishing. Please try again.');
+  const block = res.content.find((b) => b.type === 'tool_use') as any;
+  if (!block?.input) throw new HttpError(502, 'AI returned an unreadable response, try again');
+  return deepNoDash(block.input) as T;
 }
 
 export function parseJson<T>(text: string): T {

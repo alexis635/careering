@@ -23,7 +23,12 @@ export interface Job {
   fit: 'strong' | 'moderate' | 'weak' | null;
   angle: string; angle_focus: AngleFocus; angle_chat: AngleMsg[]; angle_check: string;
   advisor_chat?: AdvisorMsg[]; advisor_notes?: string; advisor_tone?: string;
+  positioning?: Positioning | null; tools?: { name: string; used: boolean | null }[];
   posting_parsed: { summary?: string; requirements?: string[]; nice_to_haves?: string[]; keywords?: string[] } | null;
+}
+export interface Positioning {
+  real_posting: boolean; headline: string; summary: string; reach: 'in reach' | 'stretch' | 'big stretch' | ''; reach_reason: string; rated_at: string;
+  requirements: { requirement: string; status: 'met' | 'transferable' | 'gap'; proof: string; say_it: string }[];
 }
 export interface JobDoc { id: number; kind: string; title: string; body: string; version: number; source: string; created_at: string }
 export interface JobNote { id: number; body: string; kind: string; created_at: string }

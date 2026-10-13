@@ -9,8 +9,9 @@ import { findPeople } from './people.js';
 import { search } from './search.js';
 import { noDash } from '../src/lib/noDash.js';
 import { HttpError, ask, libraryContext, loadJob, parseJson, postingOrThrow, saveDoc } from './ai.js';
+import { answerTool, matchJob, toolsBlock } from './positioning.js';
 
-type Body = { job_id?: number; instructions?: string; kind?: string; contact_name?: string; contact_title?: string; resume_id?: number };
+type Body = { job_id?: number; instructions?: string; kind?: string; contact_name?: string; contact_title?: string; resume_id?: number; tool?: string; used?: boolean | null };
 
 const jobHeader = (j: any) => `Company: ${j.company}\nRole: ${j.role_title}\nLocation: ${j.location} ${j.remote_type}`.trim();
 
@@ -60,6 +61,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
     const updated = (await q(`UPDATE jobs SET posting_text=$1, updated_at=now() WHERE id=$2 RETURNING *`, [text, jobId]))[0];
     return parseJob(updated, text);
   }
+  if (action === 'tool') return answerTool(jobId, String(body.tool || ''), body.used ?? null);
   if (action === 'angle-chat') return angleChat(body as any, job);
   if (action === 'advisor-chat') return advisorChat(body as any, job);
   const posting = postingOrThrow(job);
@@ -70,27 +72,11 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
   if (action === 'parse') return parseJob(job, posting);
 
   const lib = await libraryContext();
+  const tools = ['tailor', 'cover_letter', 'prep'].includes(action) ? await toolsBlock(job) : '';
   if (lib.empty && !['outreach', 'follow_up', 'thank_you'].includes(action)) throw new HttpError(400, 'Add some bullets and a resume version to the Library first');
 
-  // 2. Match / gap check
-  if (action === 'match') {
-    const out = parseJson<{ summary: string; strengths: string[]; gaps: string[]; suggested_resume_id: number | null; fit: string; angle_read?: string }>(
-      await ask(
-        'Compare the job posting to the candidate material. Respond with ONLY a JSON object: ' +
-          'summary (3-4 sentence honest fit assessment), strengths (string[] of requirements the material clearly supports), gaps (string[] of requirements it does not support), ' +
-          'suggested_resume_id (number id of the best RESUME VERSION as shown in [#id], or null if none fit), ' +
-          'fit (exactly one of "strong", "moderate", "weak": strong = most requirements clearly supported, weak = core requirements unsupported). Rate fit ONLY on the candidate material, never on her angle.' +
-          (job.angle?.trim() ? ' Also include angle_read (3 to 5 sentences): an honest read of her stated angle. Which parts the material backs up, which parts are only her own word or are not in her record yet and what to add to make them defensible, and how well the angle answers the posting\'s top needs. Be kind and straight.' : ''),
-        `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nCANDIDATE MATERIAL:\n${lib.text}${angleBlock}`,
-      ),
-    );
-    const notes = `${out.summary}\n\nStrengths:\n${out.strengths.map((s) => `- ${s}`).join('\n')}\n\nGaps:\n${out.gaps.map((s) => `- ${s}`).join('\n')}`;
-    const valid = lib.resumes.some((r: any) => r.id === out.suggested_resume_id);
-    const fit = ['strong', 'moderate', 'weak'].includes(out.fit) ? out.fit : null;
-    return (
-      await q(`UPDATE jobs SET match_notes=$1, resume_version_id=COALESCE($2, resume_version_id), fit=COALESCE($3, fit), angle_check=$5, updated_at=now() WHERE id=$4 RETURNING *`, [notes, valid ? out.suggested_resume_id : null, fit, jobId, job.angle?.trim() ? noDash(String(out.angle_read || '')) : ''])
-    )[0];
-  }
+  // 2. Match: position her for the role, rate fit as positioned, note the reach and the tools asked for
+  if (action === 'match') return matchJob(job, posting, lib, angleBlock);
 
   // 3. Resume tailoring
   if (action === 'tailor') {
@@ -100,9 +86,9 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
         'Line 1: the candidate\'s full name. Line 2: a short headline for the role being targeted. Line 3: one contact line (email · phone), all copied from the base resume or career facts; if missing use [YOUR NAME] and [email · phone]. Never add a location.\n' +
         'Then sections, each starting with "## " and an uppercase title, e.g. "## SUMMARY", "## EXPERIENCE", "## EDUCATION", "## SKILLS". Order sections by what best fits the role.\n' +
         'Inside a section, each job or school is one line "### Title | Dates", then one line "> Organization · City, ST", then bullets that each start with "- ". Summary and skills are plain lines. Use the exact titles and dates from the CAREER FACTS bio.\n' +
-        'Choose and lightly reword bullets from the BULLET BANK and the chosen resume version so they speak to the posting. Mirror the posting\'s keywords only where the material supports them. Keep facts, dates, and numbers unchanged. Strongest matches first. Must fit one page.' +
+        'Choose and lightly reword bullets from the BULLET BANK and the chosen resume version so they speak to the posting. Mirror the posting\'s keywords only where the material supports them. Keep facts, dates, and numbers unchanged. Strongest matches first. Must fit one page. Use the POSITIONING headline as line 2 when one is given. Lead the summary with her total years and her scope (teams, budgets, reach, revenue). Follow the RESUME LAYOUT RULES in the CAREER FACTS exactly.' +
         (body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''),
-      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nBASE RESUME FRAMING:\n${framing ? framing.body : '(none chosen, use the bullet bank)'}\n\nCANDIDATE MATERIAL:\n${lib.text}${angleBlock}`,
+      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nBASE RESUME FRAMING:\n${framing ? framing.body : '(none chosen, use the bullet bank)'}\n\nCANDIDATE MATERIAL:\n${lib.text}${tools}${angleBlock}`,
       9000,
     );
     return saveDoc(jobId, 'resume', `Tailored resume for ${job.company || 'job'}`, text);
@@ -123,7 +109,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
         '## BEFORE THE INTERVIEW\n' +
         '5 short checklist bullets specific to this posting: what to research, what to have ready, logistics.' +
         (body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''),
-      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nMATCH NOTES (strengths and gaps already found):\n${job.match_notes || '(none yet)'}\n\nCANDIDATE MATERIAL:\n${lib.text}\n\nDRAFTS SUBMITTED FOR THIS JOB:\n${sent.map((d: any) => `[${d.kind}] ${d.body}`).join('\n\n') || '(none)'}${angleBlock}`,
+      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nMATCH NOTES (strengths and gaps already found):\n${job.match_notes || '(none yet)'}\n\nCANDIDATE MATERIAL:\n${lib.text}\n\nDRAFTS SUBMITTED FOR THIS JOB:\n${sent.map((d: any) => `[${d.kind}] ${d.body}`).join('\n\n') || '(none)'}${tools}${angleBlock}`,
       9000,
     );
     return saveDoc(jobId, 'interview_prep', `Interview prep for ${job.company || 'job'}`, text);
@@ -183,7 +169,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
     const text = await ask(
       'Write a cover letter as a finished document. Line 1: the candidate\'s full name. Line 2: contact line (email · phone), both from the CAREER FACTS or base resume, never a location. Then a blank line, then the letter: a greeting ("Dear Hiring Team," if no name is known), 3 short paragraphs totalling 250 to 330 words, and a closing "Sincerely," on its own line followed by the candidate\'s name. ' +
         'Open with a specific hook about the company or role, connect two or three real accomplishments from the candidate material to the posting\'s top needs, close briefly. No "I am writing to apply" opener. Plain paragraphs only, separated by blank lines.',
-      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nCANDIDATE MATERIAL:\n${lib.text}${angleBlock}${body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''}`,
+      `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nCANDIDATE MATERIAL:\n${lib.text}${tools}${angleBlock}${body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''}`,
       6000,
     );
     return saveDoc(jobId, 'cover_letter', `Cover letter for ${job.company || 'job'}`, text);
@@ -226,7 +212,7 @@ const RESUME_FORMAT =
   'Line 1: the candidate\'s full name. Line 2: a short headline for the target role. Line 3: one contact line (email · phone) from the CAREER FACTS. Never add a location.\n' +
   'Then sections, each starting with "## " and an uppercase title, such as "## SUMMARY", "## EXPERIENCE", "## EDUCATION", "## KEY COMPETENCIES". Order the sections by what fits the request best.\n' +
   'Inside a section, each job or school is one line "### Title | Dates", then one line "> Organization · City, ST", then bullets that each start with "- ". Summary and competencies are plain lines.\n' +
-  'Use the exact employers, titles, and dates from the CAREER FACTS, and never leave a gap in the timeline. Choose and lightly reword bullets from the BULLET BANK and the master resumes so they serve the request; older or less relevant roles can shrink to one bullet. Keep every fact, date, and number exactly as written. It must fit one page with comfortable, readable text: 15 to 19 bullets in total, each under 30 words, and a summary of 2 to 3 sentences.';
+  'Use the exact employers, titles, and dates from the CAREER FACTS, and never leave a gap in the timeline. Choose and lightly reword bullets from the BULLET BANK and the master resumes so they serve the request; older or less relevant roles can shrink to one bullet. Keep every fact, date, and number exactly as written. It must fit one page with comfortable, readable text: 15 to 19 bullets in total, each under 30 words, and a summary of 2 to 3 sentences that leads with her total years and scope. Follow the RESUME LAYOUT RULES in the CAREER FACTS exactly (Special Projects, Media & Entertainment Experience, no "intern").';
 
 async function resumeRoute(body: { request?: string; feedback?: string; item_id?: number; base_id?: number }) {
   const lib = await libraryContext();

@@ -5,6 +5,7 @@ import { ArrowLeft, Download, ExternalLink, Mail, Paperclip, Plus, Sparkles, Tra
 import { api } from '../api';
 import FitBadge from '../components/FitBadge';
 import AngleCard from '../components/AngleCard';
+import PositioningCard from '../components/PositioningCard';
 import AdvisorTab from '../components/AdvisorTab';
 import PrepView from '../components/PrepView';
 import JobDeck from '../components/JobDeck';
@@ -289,7 +290,7 @@ export default function JobDetail() {
               <div className="card p-5 space-y-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <button className="btn" disabled={!!busy} onClick={analyze}><Sparkles size={14} /> {busy === 'analyze' ? 'Reading the posting…' : job.posting_parsed ? 'Analyze again' : 'Analyze this job'}</button>
-                  <span className="text-xs text-teal">Gets the posting from the link if needed, pulls out the requirements, and checks the fit.</span>
+                  <span className="text-xs text-teal">Gets the posting from the link if needed, maps your experience to every requirement, and rates your fit as positioned.</span>
                   {aiErr && <span className="text-sm text-red-700 whitespace-pre-wrap break-words">{aiErr}</span>}
                 </div>
                 {job.posting_parsed && (
@@ -300,17 +301,9 @@ export default function JobDetail() {
                   </div>
                 )}
               </div>
-              <div className="card p-5 space-y-4">
-                <div className="flex items-center gap-3">
-                  <label className="label mb-0">Fit</label>
-                  <select className="input w-44" value={job.fit ?? ''} onChange={(e) => save({ fit: (e.target.value || null) as Job['fit'] })}>
-                    <option value="">Not rated</option><option value="strong">Strong</option><option value="moderate">Moderate</option><option value="weak">Weak</option>
-                  </select>
-                  <FitBadge fit={job.fit} />
-                  <span className="text-xs text-teal">Set by the analysis; change it any time.</span>
-                </div>
+              <PositioningCard job={job} save={save} setJob={setJob}>
                 <TextBlock label="Match notes" value={job.match_notes} onSave={(v) => save({ match_notes: v })} rows={8} />
-              </div>
+              </PositioningCard>
               <AngleCard job={job} save={save} setJob={setJob} />
               <details className="card group" open={!job.posting_text.trim()}>
                 <summary className="cursor-pointer list-none px-5 py-3.5 flex items-center justify-between text-sm font-medium">
