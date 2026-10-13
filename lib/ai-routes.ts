@@ -86,10 +86,10 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
         'Line 1: the candidate\'s full name. Line 2: a short headline for the role being targeted. Line 3: one contact line (email · phone), all copied from the base resume or career facts; if missing use [YOUR NAME] and [email · phone]. Never add a location.\n' +
         'Then sections, each starting with "## " and an uppercase title, e.g. "## SUMMARY", "## EXPERIENCE", "## EDUCATION", "## SKILLS". Order sections by what best fits the role.\n' +
         'Inside a section, each job or school is one line "### Title | Dates", then one line "> Organization · City, ST", then bullets that each start with "- ". Summary and skills are plain lines. Use the exact titles and dates from the CAREER FACTS bio.\n' +
-        'Choose and lightly reword bullets from the BULLET BANK and the chosen resume version so they speak to the posting. Mirror the posting\'s keywords only where the material supports them. Keep facts, dates, and numbers unchanged. Strongest matches first. Must fit one page. Use the POSITIONING headline as line 2 when one is given. Lead the summary with her total years and her scope (teams, budgets, reach, revenue). Follow the RESUME LAYOUT RULES in the CAREER FACTS exactly.' +
+        'Choose and lightly reword bullets from the BULLET BANK and the chosen resume version so they speak to the posting. Mirror the posting\'s keywords only where the material supports them. Keep facts, dates, and numbers unchanged. Strongest matches first. Must fit one page. Use the POSITIONING headline as line 2 when one is given. Match the level of the role: for manager and above, open the summary with "Senior", her total years, and her scope (teams, budgets, reach, revenue); for coordinator, specialist, associate, or assistant roles, never use the word "Senior" and lead with hands-on, directly relevant results. Use the SCOPE LINES. Inside every section list entries newest first (by end date, then start date). When the employer is in media, entertainment, publishing, or streaming, always include the MEDIA & ENTERTAINMENT EXPERIENCE section. Follow the RESUME LAYOUT RULES in the CAREER FACTS exactly.' +
         (body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''),
       `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nBASE RESUME FRAMING:\n${framing ? framing.body : '(none chosen, use the bullet bank)'}\n\nCANDIDATE MATERIAL:\n${lib.text}${tools}${angleBlock}`,
-      9000,
+      16000,
     );
     return saveDoc(jobId, 'resume', `Tailored resume for ${job.company || 'job'}`, text);
   }
@@ -110,7 +110,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
         '5 short checklist bullets specific to this posting: what to research, what to have ready, logistics.' +
         (body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''),
       `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nMATCH NOTES (strengths and gaps already found):\n${job.match_notes || '(none yet)'}\n\nCANDIDATE MATERIAL:\n${lib.text}\n\nDRAFTS SUBMITTED FOR THIS JOB:\n${sent.map((d: any) => `[${d.kind}] ${d.body}`).join('\n\n') || '(none)'}${tools}${angleBlock}`,
-      9000,
+      16000,
     );
     return saveDoc(jobId, 'interview_prep', `Interview prep for ${job.company || 'job'}`, text);
   }
@@ -168,7 +168,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
   if (action === 'cover_letter') {
     const text = await ask(
       'Write a cover letter as a finished document. Line 1: the candidate\'s full name. Line 2: contact line (email · phone), both from the CAREER FACTS or base resume, never a location. Then a blank line, then the letter: a greeting ("Dear Hiring Team," if no name is known), 3 short paragraphs totalling 250 to 330 words, and a closing "Sincerely," on its own line followed by the candidate\'s name. ' +
-        'Open with a specific hook about the company or role, connect two or three real accomplishments from the candidate material to the posting\'s top needs, close briefly. No "I am writing to apply" opener. Plain paragraphs only, separated by blank lines.',
+        'Open with a specific hook about the company or role, connect two or three real accomplishments from the candidate material to the posting\'s top needs, close briefly. Match the level of the role: confident leadership and scope for manager and above; for coordinator or specialist roles, eager hands-on delivery, and never call herself senior. No "I am writing to apply" opener. Plain paragraphs only, separated by blank lines.',
       `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nCANDIDATE MATERIAL:\n${lib.text}${tools}${angleBlock}${body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''}`,
       6000,
     );
@@ -230,7 +230,7 @@ async function resumeRoute(body: { request?: string; feedback?: string; item_id?
     prev
       ? `CURRENT RESUME:\n${prev.body}\n\nFEEDBACK: ${feedback}\n\nCANDIDATE MATERIAL:\n${lib.text}`
       : `WHAT THE RESUME IS FOR: ${request}\n\n${base ? `START FROM THIS RESUME'S FRAMING (${base.title}):\n${base.body}\n\n` : ''}CANDIDATE MATERIAL:\n${lib.text}`,
-    9000,
+    16000,
   );
 
   // Save every version, never overwrite: "Custom: <request>" then "... v2", "... v3" for refinements.

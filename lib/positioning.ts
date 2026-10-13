@@ -84,7 +84,7 @@ const MATCH_SYSTEM =
   'You are her career advocate and an honest recruiter in one. Show how her REAL experience answers this posting so she is seen as the strongest candidate, and tell her the truth about reach. ' +
   'Answer with the answer tool, using these fields:\n' +
   'real_posting (boolean: false when the text is a careers page, a list of jobs, or has no actual description and requirements for one role),\n' +
-  'headline (a senior resume headline for this role, under 10 words, built only from her real experience),\n' +
+  'headline (a resume headline for this role, under 10 words, built only from her real experience and matched to the role\'s level: senior wording for manager, lead, head, or director roles; for coordinator, specialist, associate, or assistant roles a strong hands-on headline that never uses the word "Senior"),\n' +
   'summary (3 to 4 sentences: why she is a strong candidate in terms of the posting\'s top needs, then the one or two things to address),\n' +
   'requirements (array, one per must-have requirement in the posting, at most 12, each {requirement, status, proof, say_it}: status is exactly "met", "transferable", or "gap"; proof names the real employer or project and its real numbers, empty for a gap; say_it is one line on how to word it on her resume or letter in the posting\'s own language, or for a gap how to address it honestly),\n' +
   'tools (string[]: every named software, platform, or tool the posting asks for, short names only),\n' +
