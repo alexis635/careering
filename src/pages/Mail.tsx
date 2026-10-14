@@ -52,6 +52,7 @@ export default function Mail() {
             <button key={b.key} onClick={() => setBox(b.key)} className={`px-4 py-2 text-sm border-b-2 -mb-px ${box === b.key ? 'border-navy font-semibold' : 'border-transparent text-teal hover:text-navy'}`}>{b.label}</button>
           ))}
         </div>
+        {gmail && <button className="btn-ghost" title="Google signs Careering out about once a week. Click to sign back in." onClick={async () => { const r = await api.get<{ url: string }>('gmail/connect'); window.location.href = r.url; }}>{gmail.connected ? 'Reconnect Gmail' : 'Connect Gmail'}</button>}
         {gmail?.connected && <button className="btn-ghost" disabled={busy} onClick={check}><RefreshCw size={14} className={busy ? 'animate-spin' : ''} /> {busy ? 'Checking…' : 'Check for replies'}</button>}
         {gmail && !gmail.connected && <p className="text-sm text-teal">Gmail is not connected yet. Open any job, go to its Emails tab, and click Connect Gmail.</p>}
         {msg && <p className="text-sm text-teal">{msg}</p>}

@@ -367,7 +367,7 @@ export default function JobDetail() {
           )}
           {gmail?.connected && (
             <form className="card p-4 space-y-3" onSubmit={(e) => { e.preventDefault(); sendMail(); }}>
-              <div className="text-xs text-teal">Sending from {gmail.email}</div>
+              <div className="text-xs text-teal">Sending from {gmail.email} · <button type="button" className="underline hover:text-navy" title="Google signs Careering out about once a week. Click to sign back in." onClick={async () => { const r = await api.get<{ url: string }>('gmail/connect'); window.location.href = r.url; }}>Reconnect Gmail</button></div>
               {!logistics && (
                 <div className="rounded-lg bg-beige p-3 space-y-2.5">
                   <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-teal"><Sparkles size={13} /> Write it for me</div>

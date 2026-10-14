@@ -59,7 +59,7 @@ export function DraftCard({ draft, onChange }: { draft: OutreachDraft; onChange:
         </p>
       )}
       {draft.status === 'approved' && !draft.approval_valid && <p className="text-sm text-red-700">Changed after approval. Approve it again.</p>}
-      {draft.status === 'failed' && draft.error && <p className="text-sm text-red-700">{draft.error}{/gmail|google|token|connected/i.test(draft.error) ? ' Reconnect Gmail on the Emails tab, then try again.' : ''}</p>}
+      {draft.status === 'failed' && draft.error && <p className="text-sm text-red-700">{draft.error}{/gmail|google|token|connected|grant/i.test(draft.error) && <> <button className="underline font-medium" onClick={async () => { const r = await api.get<{ url: string }>('gmail/connect'); window.location.href = r.url; }}>Reconnect Gmail</button>, then try again.</>}</p>}
 
       {open && (
         <>
