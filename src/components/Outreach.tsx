@@ -4,7 +4,7 @@ import { Check, Loader2, Mail, RotateCcw, Send, Sparkles, Undo2 } from 'lucide-r
 import { api } from '../api';
 import type { OutreachDraft, OutreachRun } from '../types';
 
-const SEAT: Record<OutreachDraft['recipient'], string> = { hiring_manager: 'Hiring manager', hr: 'HR / recruiting' };
+const SEAT: Record<OutreachDraft['recipient'], string> = { hiring_manager: 'Hiring manager', hr: 'HR / recruiting', other: 'Contact' };
 const STATUS: Record<OutreachDraft['status'], { label: string; cls: string }> = {
   drafted: { label: 'Needs your review', cls: 'bg-beige text-navy border border-sky' },
   approved: { label: 'Approved, waiting for Noelle', cls: 'bg-sky text-navy' },
@@ -150,7 +150,7 @@ export function JobOutreach({ jobId, stage, onPeople }: { jobId: number; stage: 
   }
   if (!data) return null;
   const { run, drafts } = data;
-  const seats = new Set(drafts.filter((d) => d.status !== 'skipped').map((d) => d.recipient));
+  const seats = new Set(drafts.filter((d) => d.status !== 'skipped' && d.recipient !== 'other').map((d) => d.recipient));
   const missing = seats.size < 2 && run?.status !== 'running';
   const applied = stage !== 'Saved';
 

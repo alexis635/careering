@@ -237,7 +237,7 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
       if (!Number.isInteger(id)) return fail(404, 'not_found', 'Draft id must be a number');
       try {
         const d = await outreach.sendDraft(id, 'noelle');
-        return { ...ok(outreachView(d, r.host)), audit: { job_id: d.job_id, summary: `Sent the approved outreach email to ${d.to_name || d.to_email} (${d.recipient === 'hr' ? 'HR' : 'hiring manager'})`, after: { id: d.id, to: d.to_email, subject: d.subject } } };
+        return { ...ok(outreachView(d, r.host)), audit: { job_id: d.job_id, summary: `Sent the approved outreach email to ${d.to_name || d.to_email} (${d.recipient === 'hr' ? 'HR' : d.recipient === 'other' ? 'contact' : 'hiring manager'})`, after: { id: d.id, to: d.to_email, subject: d.subject } } };
       } catch (e: any) {
         if (!(e instanceof HttpError)) throw e;
         const code = e.status === 403 ? 'approval_required' : e.status === 404 ? 'not_found' : e.status === 409 ? 'conflict' : 'send_failed';

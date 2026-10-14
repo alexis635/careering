@@ -147,6 +147,7 @@ export async function route(c: Ctx): Promise<Result> {
     }
     if (b && c2 === 'logo' && c.method === 'POST') return { json: await resolveLogo(id) };
     if (b && c2 === 'outreach' && !d && c.method === 'GET') return { json: await outreach.jobOutreach(id) };
+    if (b && c2 === 'outreach' && d === 'approved' && c.method === 'POST') return { json: await outreach.createApprovedDraft(id, c.body) };
     if (b && c2 === 'outreach' && d === 'start' && c.method === 'POST') {
       const started = await startOutreach(id, 'alexis');
       return { json: { started, ...(await outreach.jobOutreach(id)) } };

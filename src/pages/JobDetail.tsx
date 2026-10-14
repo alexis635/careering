@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ArrowLeft, Download, ExternalLink, Mail, Paperclip, Plus, Sparkles, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Check, Download, ExternalLink, Mail, Paperclip, Plus, Sparkles, Trash2, X } from 'lucide-react';
 import { api } from '../api';
 import FitBadge from '../components/FitBadge';
 import AngleCard from '../components/AngleCard';
@@ -172,6 +172,17 @@ export default function JobDetail() {
     try {
       await api.post('gmail/send', { job_id: Number(id), to: compose.to, subject: compose.subject, body: withLink, attachments: atts });
       setCompose({ to: '', subject: '', body: '' }); setAtts([]); setMailMsg('Sent.'); loadKids();
+    } catch (e: any) { setMailMsg(e.message); } finally { setBusy(null); }
+  }
+  /** Instead of sending now: lock this exact email as approved and let Noelle send it on her next check. */
+  async function approveForNoelle() {
+    const withLink = usePortfolio && portfolio.trim() ? `${compose.body}\n\nPortfolio: ${portfolio.trim()}` : compose.body;
+    if (!compose.to.trim() || !compose.subject.trim() || !compose.body.trim()) { setMailMsg('Fill in To, Subject, and the message first.'); return; }
+    if (!confirm(`Approve this email to ${compose.to} for Noelle to send?\n\nShe sends exactly this from ${gmail?.email} on her next check. You can take it back on the Outreach tab until then.`)) return;
+    setBusy('approve'); setMailMsg('');
+    try {
+      await api.post(`jobs/${id}/outreach/approved`, { to: compose.to, subject: compose.subject, body: withLink, contact_id: Number(draftContact) || undefined });
+      setCompose({ to: '', subject: '', body: '' }); setMailMsg('Approved. Noelle will send it; it shows on the Outreach tab.');
     } catch (e: any) { setMailMsg(e.message); } finally { setBusy(null); }
   }
   async function syncMail() {
@@ -418,6 +429,10 @@ export default function JobDetail() {
               </div>
               <div className="flex items-center gap-3">
                 <button className="btn" disabled={busy === 'send'}><Mail size={14} /> {busy === 'send' ? 'Sending…' : 'Send'}</button>
+                <button type="button" className="btn-ghost" disabled={!!busy || atts.length > 0} onClick={approveForNoelle}
+                  title={atts.length ? 'Attachments only go out when you send it yourself' : 'Noelle sends exactly this on her next check. Track it on the Outreach tab.'}>
+                  <Check size={14} /> {busy === 'approve' ? 'Saving…' : 'Approve for Noelle'}
+                </button>
                 {mailMsg && <span className="text-sm text-teal">{mailMsg}</span>}
               </div>
             </form>

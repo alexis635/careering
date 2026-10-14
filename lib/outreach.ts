@@ -13,8 +13,9 @@ import { sendEmail } from './gmail.js';
 import { noDash } from '../src/lib/noDash.js';
 
 export type Recipient = 'hiring_manager' | 'hr';
+export type Seat = Recipient | 'other';
 export const RECIPIENTS: Recipient[] = ['hiring_manager', 'hr'];
-const LABEL: Record<Recipient, string> = { hiring_manager: 'hiring manager', hr: 'HR or recruiting' };
+const LABEL: Record<Seat, string> = { hiring_manager: 'hiring manager', hr: 'HR or recruiting', other: 'other contact at the company' };
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const STUCK_MINUTES = 6;   // a run still "running" after this long died with its function; it can be started again
 
@@ -368,6 +369,30 @@ export async function redraft(id: number, instructions: string) {
        history = history || $4::jsonb WHERE id=$5`,
     [x.subject, x.body, x.tailored, JSON.stringify([{ subject: d.subject, body: d.body, at: new Date().toISOString() }]), id]);
   return getDraft(id);
+}
+
+/**
+ * An email she wrote (or generated) herself on the Emails tab and approved for Noelle instead of sending.
+ * Saved already approved, locked to exactly this To/Subject/Body. The seat follows the contact so the
+ * automatic run will not write to that seat again.
+ */
+export async function createApprovedDraft(jobId: number, body: any) {
+  await ensureOutreachSchema();
+  const job = await loadJob(jobId);
+  if (job.deleted_at) throw new HttpError(404, 'This job is in the Trash');
+  const to_email = String(body.to || '').trim();
+  const subject = noDash(String(body.subject || '')).trim();
+  const text = noDash(String(body.body || '')).trim();
+  if (!EMAIL_RE.test(to_email)) throw new HttpError(400, 'Recipient email looks invalid');
+  if (!subject || !text) throw new HttpError(400, 'Subject and message cannot be empty');
+  const contact = (await q(`SELECT * FROM job_contacts WHERE job_id=$1 AND deleted_at IS NULL AND (id=$2 OR lower(email)=lower($3)) ORDER BY (id=$2) DESC LIMIT 1`,
+    [jobId, Number(body.contact_id) || 0, to_email]))[0];
+  const seat: Seat = (contact && seatOf(contact)?.recipient) || 'other';
+  const row = (await q(
+    `INSERT INTO outreach_drafts (job_id, contact_id, recipient, to_name, to_title, to_email, subject, body, tailored, status, approved_at, approved_hash)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Written by you on the Emails tab','approved',now(),$9) RETURNING id`,
+    [jobId, contact?.id ?? null, seat, contact?.name ?? '', contact?.title ?? '', to_email, subject, text, approvalHash({ to_email, subject, body: text })]))[0];
+  return getDraft(row.id);
 }
 
 // ---- sending (Alexis's Send button, or Noelle through the agent API) ----

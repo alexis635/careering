@@ -44,7 +44,7 @@ export interface SearchHit { type: string; id: number; job_id: number | null; hr
 export interface LibItem { id: number; kind: 'bullet' | 'resume' | 'bio' | 'snippet'; title: string; body: string; tags: string[] }
 export type OutreachStatus = 'drafted' | 'approved' | 'sending' | 'sent' | 'failed' | 'skipped';
 export interface OutreachDraft {
-  id: number; job_id: number; contact_id: number | null; recipient: 'hiring_manager' | 'hr';
+  id: number; job_id: number; contact_id: number | null; recipient: 'hiring_manager' | 'hr' | 'other';
   to_name: string; to_title: string; to_email: string; subject: string; body: string; tailored: string;
   status: OutreachStatus; approved_at: string | null; sent_at: string | null; sent_by: string | null;
   error: string; approval_valid: boolean; replied: boolean; created_at: string; updated_at: string;
