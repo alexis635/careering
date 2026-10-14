@@ -15,6 +15,7 @@ import { resolveLogo } from '../lib/logo.js';
 import * as cases from '../lib/cases.js';
 import * as roles from '../lib/roles.js';
 import * as stories from '../lib/stories.js';
+import * as refs from '../lib/references.js';
 import * as decks from '../lib/decks.js';
 import * as thrive from '../lib/thrive.js';
 import * as lessons from '../lib/lessons.js';
@@ -23,6 +24,15 @@ import { cleanStagesConfig } from '../lib/stages.js';
 import { weekly, weeklyFocus, weeklyText } from '../lib/weekly.js';
 import { clearSession, isAuthed, issueSession } from '../lib/auth.js';
 import { agentActivity, handleAgent } from '../lib/agent.js';
+import * as outreach from '../lib/outreach.js';
+import { waitUntil } from '@vercel/functions';
+
+/** Draft outreach in the background (finding people and writing takes a minute or two). False if a run is already going. */
+async function startOutreach(jobId: number, by: string) {
+  if (!(await outreach.claimRun(jobId, by))) return false;
+  waitUntil(outreach.runOutreach(jobId));
+  return true;
+}
 
 type Ctx = { method: string; parts: string[]; body: any; query: URLSearchParams; host: string };
 type Result = { status?: number; json: any; headers?: Record<string, string>; cookie?: string; file?: { name: string; mime: string; data: Buffer } };
@@ -136,12 +146,25 @@ export async function route(c: Ctx): Promise<Result> {
       return { json: (await q(s.text, s.vals))[0] };
     }
     if (b && c2 === 'logo' && c.method === 'POST') return { json: await resolveLogo(id) };
+    if (b && c2 === 'outreach' && !d && c.method === 'GET') return { json: await outreach.jobOutreach(id) };
+    if (b && c2 === 'outreach' && d === 'start' && c.method === 'POST') {
+      const started = await startOutreach(id, 'alexis');
+      return { json: { started, ...(await outreach.jobOutreach(id)) } };
+    }
     if (b && !c2) {
       if (c.method === 'GET') { await ensureAdvisorColumns(); return { json: (await q(`SELECT * FROM jobs WHERE id=$1`, [id]))[0] ?? null }; }
       if (c.method === 'PATCH') {
         if (c.body.stage && !STAGES.includes(c.body.stage)) return { status: 400, json: { error: 'bad stage' } };
+        const was = c.body.stage === 'Applied' ? (await q(`SELECT stage FROM jobs WHERE id=$1`, [id]))[0]?.stage : null;
         const s = buildUpdate('jobs', JOB_FIELDS, id, c.body, true);
-        return { json: s ? (await q(s.text, s.vals))[0] : null };
+        const row = s ? (await q(s.text, s.vals))[0] : null;
+        // Moving into Applied starts the outreach drafts (only once per job; nothing is sent without her approval).
+        if (row && was && was !== 'Applied' && row.type === 'application') {
+          await outreach.ensureOutreachSchema();
+          const seen = (await q(`SELECT 1 FROM outreach_runs WHERE job_id=$1`, [id])).length > 0;
+          if (!seen) await startOutreach(id, 'alexis');
+        }
+        return { json: row };
       }
       if (c.method === 'DELETE') {
         await q(`UPDATE jobs SET deleted_at = now() WHERE id=$1`, [id]);   // to the Trash, never destroyed
@@ -215,6 +238,28 @@ export async function route(c: Ctx): Promise<Result> {
 
   if (a === 'home' && c.method === 'GET') return { json: await home() };
 
+  // ---- post-application outreach: review, approve, send (lib/outreach.ts) ----
+  if (a === 'outreach') {
+    if (!b && c.method === 'GET') return { json: await outreach.outreachQueue(c.query.get('status') || undefined) };
+    if (b === 'start-all' && c.method === 'POST') {
+      const { not_started } = await outreach.outreachQueue();
+      const ids = (Array.isArray(c.body.job_ids) ? c.body.job_ids.map(Number) : not_started.map((j: any) => j.id)).slice(0, 5);
+      const started: number[] = [];
+      for (const jid of ids) if (await startOutreach(jid, 'alexis')) started.push(jid);
+      return { json: { started } };
+    }
+    if (b && !c2 && c.method === 'PATCH') return { json: await outreach.editDraft(id, c.body) };
+    if (b && c.method === 'POST') {
+      if (c2 === 'approve') return { json: await outreach.approveDraft(id) };
+      if (c2 === 'unapprove') return { json: await outreach.unapproveDraft(id) };
+      if (c2 === 'skip') return { json: await outreach.skipDraft(id) };
+      if (c2 === 'restore') return { json: await outreach.skipDraft(id, true) };
+      if (c2 === 'send') return { json: await outreach.sendDraft(id, 'alexis') };
+      if (c2 === 'mark-sent') return { json: await outreach.markSentElsewhere(id) };
+      if (c2 === 'redraft') return { json: await outreach.redraft(id, String(c.body.instructions || '')) };
+    }
+  }
+
   // ---- career vault: documents and wins (nothing is ever destroyed, delete moves to Recently deleted) ----
   if (a === 'vault' && b === 'docs') {
     const did = Number(c2);
@@ -224,6 +269,13 @@ export async function route(c: Ctx): Promise<Result> {
     if (c2 && d === 'restore' && c.method === 'POST') return { json: (await vault.restoreDoc(did))[0] };
     if (c2 && !d && c.method === 'PATCH') return { json: await vault.updateDoc(did, c.body) };
     if (c2 && !d && c.method === 'DELETE') { await vault.trashDoc(did); return { json: { ok: true, trashed: true } }; }
+  }
+  if (a === 'references') {
+    if (!b && c.method === 'GET') return { json: await refs.listReferences(c.query.get('deleted') === '1') };
+    if (!b && c.method === 'POST') return { json: await refs.createReference(c.body) };
+    if (b && c2 === 'restore' && c.method === 'POST') return { json: await refs.restoreReference(id) };
+    if (b && !c2 && c.method === 'PATCH') return { json: await refs.updateReference(id, c.body) };
+    if (b && !c2 && c.method === 'DELETE') { await refs.trashReference(id); return { json: { ok: true, trashed: true } }; }
   }
   if (a === 'stories') {
     if (!b && c.method === 'GET') return { json: await stories.listStories(c.query.get('deleted') === '1') };
@@ -306,7 +358,7 @@ export async function route(c: Ctx): Promise<Result> {
   }
 
   // ---- attention + search ----
-  if (a === 'attention' && c.method === 'GET') return { json: await attention() };
+  if (a === 'attention' && c.method === 'GET') return { json: { ...(await attention()), outreach: await outreach.outreachAttention() } };
   if (a === 'search' && c.method === 'GET') return { json: await search(c.query.get('q') || '', c.query.get('job_id') ? Number(c.query.get('job_id')) : null) };
 
   // ---- mail center + settings ----

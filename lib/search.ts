@@ -23,7 +23,7 @@ export async function search(term: string, jobId: number | null): Promise<Hit[]>
   const label = `COALESCE(NULLIF(j.company,''),'Untitled') || CASE WHEN j.role_title <> '' THEN ' · ' || j.role_title ELSE '' END`;
   const LIVE = `j.deleted_at IS NULL AND l.deleted_at IS NULL`;
   const FROM_JOB = (alias: string, table: string) => `FROM ${table} ${alias} JOIN jobs j ON j.id=${alias}.job_id JOIN lanes l ON l.id=j.lane_id`;
-  const [jobs, docs, notes, acts, mails, contacts, lib, wins, cases, roles, decks, work, plans, vault, stories] = await Promise.all([
+  const [jobs, docs, notes, acts, mails, contacts, lib, wins, cases, roles, decks, work, plans, vault, stories, references] = await Promise.all([
     q(`SELECT j.id, ${label} AS label, concat_ws(' ', j.company, j.role_title, j.location, j.contact_person, j.contact_notes, j.match_notes, j.interview_prep, j.posting_text) AS body FROM jobs j JOIN lanes l ON l.id = j.lane_id
         WHERE ${LIVE} AND concat_ws(' ', j.company, j.role_title, j.location, j.contact_person, j.contact_notes, j.match_notes, j.interview_prep, j.posting_text) ILIKE $1 LIMIT 15`, [like]),
     q(`SELECT d.id, d.job_id, ${label} AS label, d.title, d.body ${FROM_JOB('d', 'job_documents')} WHERE ${LIVE} AND d.deleted_at IS NULL AND (d.title ILIKE $1 OR d.body ILIKE $1) LIMIT 15`, [like]),
@@ -40,6 +40,7 @@ export async function search(term: string, jobId: number | null): Promise<Hit[]>
     q(`SELECT p.id, p.workspace_id, p.title, p.plan::text AS body, r.employer FROM lesson_plans p JOIN workspaces w ON w.id=p.workspace_id JOIN roles r ON r.id=w.role_id WHERE p.deleted_at IS NULL AND w.deleted_at IS NULL AND r.deleted_at IS NULL AND concat_ws(' ', p.title, p.plan::text) ILIKE $1 LIMIT 8`, [like]),
     q(`SELECT id, title, issuer, notes, category FROM career_docs WHERE deleted_at IS NULL AND win_id IS NULL AND concat_ws(' ', title, issuer, notes) ILIKE $1 LIMIT 10`, [like]),
     q(`SELECT id, title, employer, body FROM stories WHERE deleted_at IS NULL AND concat_ws(' ', title, employer, body) ILIKE $1 LIMIT 10`, [like]),
+    q(`SELECT id, name, title, organization, relationship, notes FROM career_references WHERE deleted_at IS NULL AND concat_ws(' ', name, title, organization, relationship, notes) ILIKE $1 LIMIT 10`, [like]).catch(() => []),
   ]);
   const hits: Hit[] = [
     ...jobs.map((r: any) => ({ type: 'Job', id: r.id, job_id: r.id, label: r.label, title: r.label, snippet: snippet(r.body, term) })),
@@ -56,6 +57,7 @@ export async function search(term: string, jobId: number | null): Promise<Hit[]>
     ...decks.map((r: any) => ({ type: 'Interview deck', id: r.id, job_id: r.job_id, href: `/jobs/${r.job_id}?tab=Interview%20deck`, label: r.label, title: r.title, snippet: snippet(String(r.body).replace(/["{}[\]\\]/g, ' '), term) })),
     ...work.map((r: any) => ({ type: `Thrive · ${r.kind}`, id: r.id, job_id: null, href: `/thrive/${r.workspace_id}`, label: r.employer, title: r.title, snippet: snippet(r.body || r.title, term) })),
     ...plans.map((r: any) => ({ type: 'Lesson plan', id: r.id, job_id: null, href: `/thrive/${r.workspace_id}?section=lessons`, label: r.employer, title: r.title, snippet: snippet(String(r.body).replace(/["{}[\]\\]/g, ' '), term) })),
+    ...references.map((r: any) => ({ type: 'Reference', id: r.id, job_id: null, href: '/library?tab=references', label: r.organization || 'References', title: r.name || 'Reference', snippet: snippet([r.title, r.organization, r.relationship, r.notes].filter(Boolean).join(' · '), term) })),
     ...vault.map((r: any) => ({ type: 'Vault document', id: r.id, job_id: null, href: '/vault', label: 'Vault', title: r.title, snippet: snippet([r.issuer, r.notes].filter(Boolean).join(' · ') || r.category, term) })),
   ];
   return jobId ? [...hits.filter((h) => h.job_id === jobId), ...hits.filter((h) => h.job_id !== jobId)] : hits;

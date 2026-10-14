@@ -17,7 +17,8 @@ export default function NeedsAttention({ att }: { att: Attention | null }) {
   const acts = att.actions;
   const stale = att.stale.filter((s) => differenceInCalendarDays(new Date(), parseISO(s.last_activity)) >= 7);
   const creds = att.credentials ?? [];
-  if (!soon.length && !acts.length && !stale.length && !creds.length) return null;
+  const out = att.outreach ?? [];
+  if (!soon.length && !acts.length && !stale.length && !creds.length && !out.length) return null;
   const row = 'flex items-center gap-3 py-1.5 text-sm';
   return (
     <div className="card p-5 mb-6 max-w-3xl mx-auto">
@@ -29,6 +30,17 @@ export default function NeedsAttention({ att }: { att: Attention | null }) {
             <span className="font-medium">{c.title}</span><span className="text-teal">Credential</span>
             <span className={`ml-auto ${r.late ? 'font-semibold' : 'text-teal'}`}>{past ? `Expired ${r.text.replace(' overdue', ' ago')}` : `Expires ${r.text}`}</span>
           </Link>); })}
+        {out.map((o) => (
+          <Link key={`o${o.id}`} to={`/jobs/${o.id}?tab=Outreach`} className={row}>
+            <CompanyLogo size="sm" domain={o.company_domain} name={o.company} />
+            <span className="font-medium">{o.company || 'Untitled'}</span><span className="text-teal">{o.role_title}</span>
+            <span className="ml-auto text-right">{[
+              o.to_review ? `${o.to_review} outreach email${o.to_review === 1 ? '' : 's'} to review` : '',
+              o.failed ? `${o.failed} failed to send` : '',
+              o.needs_research ? 'Contact needs research' : '',
+            ].filter(Boolean).join(', ')}</span>
+          </Link>
+        ))}
         {soon.map((d) => { const r = rel(d.deadline); return (
           <Link key={`d${d.id}`} to={`/jobs/${d.id}`} className={row}>
             <CompanyLogo size="sm" domain={d.company_domain} name={d.company} />

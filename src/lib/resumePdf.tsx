@@ -1,4 +1,5 @@
 import { noDash } from './noDash';
+import { orderResume } from './resumeOrder';
 import { Document, Font, Page, Text, View, StyleSheet, pdf } from '@react-pdf/renderer';
 
 // Never split words across lines (no "engage-ment").
@@ -66,7 +67,7 @@ export function parseResume(src: string): Block[] {
 
 export function ResumeDoc({ text, layout = { fs: 8.8, g: 1 } }: { text: string; layout?: Layout }) {
   const s = mk(layout);
-  const blocks = parseResume(noDash(text));
+  const blocks = parseResume(orderResume(noDash(text)));   // jobs always newest first, whatever order the text has
   return (
     <Document>
       <Page size="LETTER" style={s.page}>

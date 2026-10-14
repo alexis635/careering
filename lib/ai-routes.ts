@@ -8,6 +8,7 @@ import { advisorChat, jobBrief } from './advisor.js';
 import { findPeople } from './people.js';
 import { search } from './search.js';
 import { noDash } from '../src/lib/noDash.js';
+import { orderResume } from '../src/lib/resumeOrder.js';
 import { HttpError, ask, libraryContext, loadJob, parseJson, postingOrThrow, saveDoc } from './ai.js';
 import { answerTool, matchJob, toolsBlock } from './positioning.js';
 
@@ -91,7 +92,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
       `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nBASE RESUME FRAMING:\n${framing ? framing.body : '(none chosen, use the bullet bank)'}\n\nCANDIDATE MATERIAL:\n${lib.text}${tools}${angleBlock}`,
       16000,
     );
-    return saveDoc(jobId, 'resume', `Tailored resume for ${job.company || 'job'}`, text);
+    return saveDoc(jobId, 'resume', `Tailored resume for ${job.company || 'job'}`, orderResume(text));
   }
 
   // 3b. Interview prep sheet
@@ -237,5 +238,5 @@ async function resumeRoute(body: { request?: string; feedback?: string; item_id?
   const rootTitle = prev ? String(prev.title).replace(/ v\d+$/, '') : `Custom: ${request.replace(/\s+/g, ' ').slice(0, 60)}`;
   const n = (await q(`SELECT count(*)::int AS n FROM library_items WHERE kind='resume' AND (title = $1 OR title LIKE $2)`, [rootTitle, `${rootTitle} v%`]))[0].n;
   const title = noDash(n ? `${rootTitle} v${n + 1}` : rootTitle);
-  return (await q(`INSERT INTO library_items (kind, title, body, tags) VALUES ('resume', $1, $2, $3) RETURNING *`, [title, text, ['generated']]))[0];
+  return (await q(`INSERT INTO library_items (kind, title, body, tags) VALUES ('resume', $1, $2, $3) RETURNING *`, [title, orderResume(text), ['generated']]))[0];
 }

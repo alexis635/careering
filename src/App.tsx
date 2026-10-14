@@ -20,6 +20,7 @@ import ResumeBuilder from './pages/Resume';
 import CaseBuilder from './pages/Case';
 import ArchivePage from './pages/Archive';
 import Noelle from './pages/Noelle';
+import Outreach from './pages/Outreach';
 
 function Login({ onDone }: { onDone: () => void }) {
   const [pw, setPw] = useState('');
@@ -90,7 +91,7 @@ function areaOf(path: string) {
   return 'pursue';
 }
 const AREA_ICONS = { pursue: Compass, thrive: Sprout, vault: Lock, rise: TrendingUp } as const;
-const PURSUE_LINKS = [['/pursue', 'Overview'], ['/lanes', 'Lanes'], ['/timeline', 'Timeline'], ['/weekly', 'Week'], ['/mail', 'Mail'], ['/resume', 'Resume'], ['/library', 'Library'], ['/noelle', 'Noelle']] as const;
+const PURSUE_LINKS = [['/pursue', 'Overview'], ['/lanes', 'Lanes'], ['/timeline', 'Timeline'], ['/weekly', 'Week'], ['/outreach', 'Outreach'], ['/mail', 'Mail'], ['/resume', 'Resume'], ['/library', 'Library'], ['/noelle', 'Noelle']] as const;
 
 export default function App() {
   const { pathname } = useLocation();
@@ -159,6 +160,7 @@ export default function App() {
           <Route path="/case" element={<CaseBuilder />} />
           <Route path="/weekly" element={<Weekly />} />
           <Route path="/mail" element={<Mail />} />
+          <Route path="/outreach" element={<Outreach />} />
           <Route path="/archive" element={<ArchivePage />} />
           <Route path="/noelle" element={<Noelle />} />
         </Routes>

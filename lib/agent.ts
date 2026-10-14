@@ -9,7 +9,9 @@ import { waitUntil } from '@vercel/functions';
 import { aiRoute, parseJob } from './ai-routes.js';
 import { fetchPosting } from './posting.js';
 import { resolveLogo } from './logo.js';
-import { loadJob } from './ai.js';
+import { HttpError, loadJob } from './ai.js';
+import * as outreach from './outreach.js';
+import { orderResume } from '../src/lib/resumeOrder.js';
 
 type Out = { status?: number; json: any; headers?: Record<string, string> };
 type Req = { method: string; parts: string[]; query: URLSearchParams; headers: Record<string, any>; host: string; ip: string; readBody: () => Promise<any> };
@@ -139,6 +141,16 @@ function shape(j: any, host: string) {
   };
 }
 
+function outreachView(d: any, host: string) {
+  return {
+    id: d.id, job_id: d.job_id, company: d.company ?? undefined, title: d.role_title ?? undefined,
+    recipient: d.recipient, to_name: d.to_name, to_title: d.to_title, to_email: d.to_email || null,
+    subject: d.subject, body: d.body, status: d.status, ready_to_send: (d.status === 'approved' || d.status === 'failed') && !!d.approval_valid,
+    approved_at: d.approved_at, sent_at: d.sent_at, sent_by: d.sent_by, error: d.error || null, replied: !!d.replied,
+    app_url: `https://${host}/jobs/${d.job_id}?tab=Outreach`,
+  };
+}
+
 async function getJob(id: number, host: string, full = false) {
   const row = (await q(`${JOB_SELECT}${full ? ', j.posting_text' : ''} ${JOB_FROM} AND j.id = $1`, [id]))[0];
   if (!row) return null;
@@ -193,6 +205,29 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
   if (a === 'lanes' && !b && r.method === 'GET') {
     const lanes = await q(`SELECT id, name, notes, stages_config FROM lanes WHERE deleted_at IS NULL AND archived_at IS NULL ORDER BY position, id`);
     return ok(lanes.map((l: any) => ({ id: l.id, name: l.name, notes: l.notes || null, stage_labels: l.stages_config?.stages ?? null })));
+  }
+
+  // ---- outreach: she reads drafts and sends the ones Alexis approved. She cannot approve, edit, or skip. ----
+  if (a === 'outreach') {
+    if (!b && r.method === 'GET') {
+      const st = r.query.get('status') || 'approved';
+      if (!['drafted', 'approved', 'sent', 'failed', 'skipped', 'all'].includes(st)) return fail(400, 'invalid_filter', 'status must be drafted, approved, sent, failed, skipped, or all');
+      const qd = await outreach.outreachQueue(st === 'all' ? undefined : st);
+      return ok({ drafts: qd.drafts.map((d: any) => outreachView(d, r.host)), needs_research: qd.runs.filter((x: any) => x.status === 'needs_research').map((x: any) => ({ job_id: x.job_id, company: x.company, title: x.role_title, note: x.note, app_url: `https://${r.host}/jobs/${x.job_id}?tab=Outreach` })) });
+    }
+    if (b && c === 'send' && r.method === 'POST') {
+      if (!Number.isInteger(id)) return fail(404, 'not_found', 'Draft id must be a number');
+      try {
+        const d = await outreach.sendDraft(id, 'noelle');
+        return { ...ok(outreachView(d, r.host)), audit: { job_id: d.job_id, summary: `Sent the approved outreach email to ${d.to_name || d.to_email} (${d.recipient === 'hr' ? 'HR' : 'hiring manager'})`, after: { id: d.id, to: d.to_email, subject: d.subject } } };
+      } catch (e: any) {
+        if (!(e instanceof HttpError)) throw e;
+        const code = e.status === 403 ? 'approval_required' : e.status === 404 ? 'not_found' : e.status === 409 ? 'conflict' : 'send_failed';
+        return fail(e.status === 502 ? 502 : e.status, code, e.message);
+      }
+    }
+    if (r.method === 'PATCH' || r.method === 'DELETE' || (b && c && c !== 'send')) return fail(403, 'not_allowed', 'Only Alexis can edit, approve, or skip outreach drafts. You can send the ones she approved.');
+    return fail(404, 'not_found', 'No such endpoint. See careering.md.');
   }
 
   if (a !== 'jobs') return fail(404, 'not_found', 'No such endpoint. See CONVENTIONS.md and careering.md.');
@@ -286,6 +321,38 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
     // New posting text or link: re-read and re-parse so the overview and fit stay in step.
     if ('posting_text' in body || 'posting_url' in body) waitUntil(enrichJob(id));
     return { ...ok(after), audit: { job_id: id, summary: `Updated ${after.company}, ${after.title}: ${changed}`, before, after } };
+  }
+
+  // GET /jobs/:id/resume: the resume tailored for this job (newest version unless ?version=N), read only
+  if (c === 'resume' && r.method === 'GET' && !r.parts[3]) {
+    const job = await getJob(id, r.host);
+    if (!job) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
+    const versions = await q(
+      `SELECT id, version, title, source, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at, body
+         FROM job_documents WHERE job_id=$1 AND kind='resume' AND deleted_at IS NULL ORDER BY version DESC, id DESC`, [id]);
+    if (!versions.length) return fail(404, 'no_tailored_resume', 'No resume has been tailored for this job yet. Alexis makes one on the job\'s Resume and letters tab.');
+    const want = r.query.get('version');
+    const doc = want ? versions.find((v: any) => String(v.version) === want) : versions[0];
+    if (!doc) return fail(404, 'not_found', `No version ${want}. Versions: ${versions.map((v: any) => v.version).join(', ')}`);
+    return ok({
+      job_id: id, company: job.company, title: job.title, version: doc.version, document_title: doc.title, created_at: doc.created_at,
+      text: orderResume(doc.body), versions: versions.map(({ body, ...v }: any) => v), app_url: `https://${r.host}/jobs/${id}?tab=Documents`,
+    });
+  }
+
+  // GET /jobs/:id/outreach, POST /jobs/:id/outreach/start (drafts only; nothing is sent)
+  if (c === 'outreach' && r.method === 'GET' && !r.parts[3]) {
+    if (!(await getJob(id, r.host))) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
+    const o = await outreach.jobOutreach(id);
+    return ok({ run: o.run && { status: o.run.status, note: o.run.note, started_at: o.run.started_at, finished_at: o.run.finished_at }, drafts: o.drafts.map((d: any) => outreachView(d, r.host)) });
+  }
+  if (c === 'outreach' && r.parts[3] === 'start' && r.method === 'POST') {
+    const job = await getJob(id, r.host);
+    if (!job) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
+    if (job.stage === 'saved' || job.stage === 'closed') return fail(409, 'not_applied', 'Outreach starts after Alexis applies. This job is not in Applied or later.');
+    if (!(await outreach.claimRun(id, AGENT))) return fail(409, 'already_running', 'Drafting is already running for this job. Check back in a few minutes.');
+    waitUntil(outreach.runOutreach(id));
+    return { ...ok({ started: true }, 202), audit: { job_id: id, summary: `Started outreach drafts for ${job.company}, ${job.title}` } };
   }
 
   // POST /jobs/:id/notes: her notes sit in the job's Notes Log, marked Noelle

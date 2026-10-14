@@ -38,9 +38,19 @@ export interface Attention {
   stale: { id: number; company: string; company_domain?: string; role_title: string; stage: string; last_activity: string; lane_name: string; color: string }[];
   actions: { id: number; text: string; due_date: string; job_id: number; company: string; role_title: string }[];
   credentials?: { id: number; title: string; category: string; expires_on: string }[];
+  outreach?: { id: number; company: string; company_domain?: string; role_title: string; to_review: number; failed: number; needs_research: boolean }[];
 }
 export interface SearchHit { type: string; id: number; job_id: number | null; href?: string; label: string; title: string; snippet: string }
 export interface LibItem { id: number; kind: 'bullet' | 'resume' | 'bio' | 'snippet'; title: string; body: string; tags: string[] }
+export type OutreachStatus = 'drafted' | 'approved' | 'sending' | 'sent' | 'failed' | 'skipped';
+export interface OutreachDraft {
+  id: number; job_id: number; contact_id: number | null; recipient: 'hiring_manager' | 'hr';
+  to_name: string; to_title: string; to_email: string; subject: string; body: string; tailored: string;
+  status: OutreachStatus; approved_at: string | null; sent_at: string | null; sent_by: string | null;
+  error: string; approval_valid: boolean; replied: boolean; created_at: string; updated_at: string;
+  company?: string; company_domain?: string; role_title?: string; applied_date?: string | null;
+}
+export interface OutreachRun { job_id: number; status: 'running' | 'ready' | 'needs_research' | 'failed'; note: string; started_by: string; started_at: string; finished_at: string | null; company?: string; company_domain?: string; role_title?: string }
 export interface JobContact { id: number; name: string; title: string; email: string; source: string; notes: string }
 export interface JobEmail { attachments?: string[]; id: number; direction: 'sent' | 'received'; from_addr: string; to_addr: string; subject: string; body: string; sent_at: string; gmail_thread_id: string | null }
 export interface MailItem { id: number; job_id: number; label: string; direction: 'sent' | 'received' | 'draft'; from_addr: string; to_addr: string; subject: string; snippet: string; sent_at: string; gmail_thread_id: string | null; attachments: string[] }
@@ -81,4 +91,5 @@ export const FREELANCE_PRESET: StagesConfig = {
   outcomes: { Won: 'Contracted', Lost: 'Passed', Withdrawn: 'Withdrawn' },
 };
 
+export interface CareerReference { id: number; name: string; title: string; organization: string; relationship: string; email: string; phone: string; notes: string; okay_to_list: boolean; last_asked: string | null; deleted_at?: string | null }
 export interface Story { id: number; title: string; body: string; employer: string; job_id: number | null; job_label?: string | null; created_at: string; updated_at: string; deleted_at?: string | null }

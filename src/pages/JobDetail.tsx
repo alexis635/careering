@@ -10,16 +10,17 @@ import AdvisorTab from '../components/AdvisorTab';
 import PrepView from '../components/PrepView';
 import JobDeck from '../components/JobDeck';
 import FindPeople from '../components/FindPeople';
+import { JobOutreach } from '../components/Outreach';
 import ResumeEditor from '../components/ResumeEditor';
 import CompanyLogo from '../components/CompanyLogo';
 import { stageInfo, type Lane } from '../types';
 import type { AdvisorSuggestion, Deck, Job, JobAction, JobContact, JobDoc, JobEmail, JobNote, LibItem } from '../types';
 
-const TABS = ['Advisor', 'Overview', 'Contacts', 'Emails', 'Documents', 'Interview Prep', 'Interview deck', 'Portfolio', 'Notes Log', 'Next Actions'] as const;
+const TABS = ['Advisor', 'Overview', 'Contacts', 'Outreach', 'Emails', 'Documents', 'Interview Prep', 'Interview deck', 'Portfolio', 'Notes Log', 'Next Actions'] as const;
 // The sidebar groups the tabs by what you are doing; the tab names stay the same so old links still work.
 const NAV: { title: string; tabs: { key: (typeof TABS)[number]; label: string }[] }[] = [
   { title: 'The job', tabs: [{ key: 'Advisor', label: 'Advisor' }, { key: 'Overview', label: 'Overview' }, { key: 'Contacts', label: 'People' }] },
-  { title: 'Apply', tabs: [{ key: 'Documents', label: 'Resume and letters' }, { key: 'Portfolio', label: 'Portfolio concept' }, { key: 'Emails', label: 'Emails' }, { key: 'Next Actions', label: 'Next steps' }] },
+  { title: 'Apply', tabs: [{ key: 'Documents', label: 'Resume and letters' }, { key: 'Portfolio', label: 'Portfolio concept' }, { key: 'Outreach', label: 'Outreach' }, { key: 'Emails', label: 'Emails' }, { key: 'Next Actions', label: 'Next steps' }] },
   { title: 'Interview', tabs: [{ key: 'Interview Prep', label: 'Prep sheet' }, { key: 'Interview deck', label: 'Deck' }] },
   { title: 'Record', tabs: [{ key: 'Notes Log', label: 'Notes' }] },
 ];
@@ -353,6 +354,8 @@ export default function JobDetail() {
           ))}
         </div>
       )}
+
+      {tab === 'Outreach' && <JobOutreach jobId={Number(id)} stage={job.stage} onPeople={() => setTab('Contacts')} />}
 
       {tab === 'Emails' && (
         <div className="space-y-4">

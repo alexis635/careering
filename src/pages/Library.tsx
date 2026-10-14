@@ -3,6 +3,7 @@ import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 import { api } from '../api';
 import ResumeEditor from '../components/ResumeEditor';
+import References from '../components/References';
 import type { LibItem } from '../types';
 
 const KINDS: { key: LibItem['kind']; label: string; hint: string }[] = [
@@ -46,7 +47,7 @@ function Item({ item, onChange, onDelete }: { item: LibItem; onChange: (p: Parti
 export default function Library() {
   const [sp] = useSearchParams();
   const asked = sp.get('tab') ?? '';
-  const [kind, setKind] = useState<LibItem['kind']>(KINDS.some((k) => k.key === asked) ? (asked as LibItem['kind']) : 'bullet');
+  const [kind, setKind] = useState<LibItem['kind'] | 'references'>(asked === 'references' || KINDS.some((k) => k.key === asked) ? (asked as LibItem['kind']) : 'bullet');
   const [items, setItems] = useState<LibItem[]>([]);
   const [filter, setFilter] = useState('');
   const [showArchived, setShowArchived] = useState(false);
@@ -57,11 +58,11 @@ export default function Library() {
     api.get<LibItem[]>(`library?kind=${kind}`).then(setItems);
     api.get<LibItem[]>(`library?kind=${kind}&deleted=1`).then(setGone).catch(() => {});
   };
-  useEffect(() => { if (!MOVED[asked]) load(); }, [kind]);
+  useEffect(() => { if (!MOVED[asked] && kind !== 'references') load(); }, [kind]);
 
   if (MOVED[asked]) return <Navigate to={MOVED[asked]} replace />;
 
-  const cur = KINDS.find((k) => k.key === kind)!;
+  const cur = KINDS.find((k) => k.key === kind);
   const shown = items.filter((i) => (showArchived || !i.tags.includes('archived')) && (!filter || (i.title + i.body + i.tags.join(' ')).toLowerCase().includes(filter.toLowerCase())));
 
   return (
@@ -71,7 +72,9 @@ export default function Library() {
         {KINDS.map((k) => (
           <button key={k.key} onClick={() => setKind(k.key)} className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${kind === k.key ? 'border-navy font-semibold' : 'border-transparent text-teal hover:text-navy'}`}>{k.label}</button>
         ))}
+        <button onClick={() => setKind('references')} className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 -mb-px ${kind === 'references' ? 'border-navy font-semibold' : 'border-transparent text-teal hover:text-navy'}`}>References</button>
       </div>
+      {!cur ? <References /> : <>
       <p className="text-sm text-teal mb-3 text-center">{cur.hint}{kind === 'resume' && <> Need one for something specific? <Link to="/resume" className="underline">Build a custom resume</Link>.</>}</p>
       <div className="flex gap-2 mb-4">
         <input className="input" placeholder="Search…" value={filter} onChange={(e) => setFilter(e.target.value)} />
@@ -101,6 +104,7 @@ export default function Library() {
           )}
         </div>
       )}
+      </>}
     </div>
   );
 }
