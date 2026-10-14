@@ -6,7 +6,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { q } from './db.js';
 import { deepNoDash } from '../src/lib/noDash.js';
 import { waitUntil } from '@vercel/functions';
-import { aiRoute, parseJob } from './ai-routes.js';
+import { aiRoute, parseJob, reviseResume } from './ai-routes.js';
 import { fetchPosting } from './posting.js';
 import { resolveLogo } from './logo.js';
 import { HttpError, loadJob } from './ai.js';
@@ -163,7 +163,7 @@ function outreachView(d: any, host: string) {
   return {
     id: d.id, job_id: d.job_id, company: d.company ?? undefined, title: d.role_title ?? undefined,
     recipient: d.recipient, to_name: d.to_name, to_title: d.to_title, to_email: d.to_email || null,
-    subject: d.subject, body: d.body, status: d.status, ready_to_send: (d.status === 'approved' || d.status === 'failed') && !!d.approval_valid,
+    subject: d.subject, body: d.body, attachments: d.attachment_names ?? [], status: d.status, ready_to_send: (d.status === 'approved' || d.status === 'failed') && !!d.approval_valid,
     approved_at: d.approved_at, sent_at: d.sent_at, sent_by: d.sent_by, error: d.error || null, replied: !!d.replied,
     app_url: `https://${host}/jobs/${d.job_id}?tab=Outreach`,
   };
@@ -341,6 +341,32 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
     return { ...ok(after), audit: { job_id: id, summary: `Updated ${after.company}, ${after.title}: ${changed}`, before, after } };
   }
 
+  // POST /jobs/:id/resume/revise: a NEW version revised by her direction. Existing versions are never changed.
+  if (c === 'resume' && r.parts[3] === 'revise' && r.method === 'POST') {
+    const job = await getJob(id, r.host);
+    if (!job) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
+    const unknown = Object.keys(body).filter((f) => !['instructions', 'version'].includes(f));
+    if (unknown.length) return fail(400, 'unknown_field', `Unknown field(s): ${unknown.join(', ')}. Send instructions (and optional version).`);
+    const instructions = typeof body.instructions === 'string' ? body.instructions.trim() : '';
+    if (!instructions) return fail(400, 'missing_field', 'instructions is required: say what to change');
+    if (instructions.length > 3000) return fail(400, 'too_long', 'Keep instructions under 3,000 characters');
+    if ('version' in body && body.version !== null && !Number.isInteger(body.version)) return fail(400, 'invalid_field', 'version must be a whole number');
+    try {
+      const res = await reviseResume(id, { instructions, version: body.version ?? null, by: AGENT });
+      await q(`INSERT INTO job_notes (job_id, body, kind) VALUES ($1,$2,'Noelle')`, [id,
+        `Revised the resume (v${res.base_version} to v${res.doc.version}). Asked for: ${instructions}` +
+        (res.changes.length ? `\nChanged: ${res.changes.join('; ')}` : '') +
+        (res.not_done.length ? `\nLeft out (not in your record): ${res.not_done.join('; ')}` : '')]);
+      return {
+        ...ok({ version: res.doc.version, based_on: res.base_version, document_title: res.doc.title, text: res.doc.body, changes: res.changes, not_done: res.not_done, app_url: `https://${r.host}/jobs/${id}?tab=Documents` }, 201),
+        audit: { job_id: id, summary: `Revised the resume for ${job.company}, ${job.title} (v${res.base_version} to v${res.doc.version})` },
+      };
+    } catch (e: any) {
+      if (!(e instanceof HttpError)) throw e;
+      return fail(e.status, e.status === 404 ? 'no_tailored_resume' : e.status === 400 ? 'invalid_field' : 'ai_failed', e.message);
+    }
+  }
+
   // GET /jobs/:id/resume: the resume tailored for this job (newest version unless ?version=N), read only
   if (c === 'resume' && r.method === 'GET' && !r.parts[3]) {
     const job = await getJob(id, r.host);
@@ -354,7 +380,7 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
     if (!doc) return fail(404, 'not_found', `No version ${want}. Versions: ${versions.map((v: any) => v.version).join(', ')}`);
     return ok({
       job_id: id, company: job.company, title: job.title, version: doc.version, document_title: doc.title, created_at: doc.created_at,
-      text: orderResume(doc.body), versions: versions.map(({ body, ...v }: any) => v), app_url: `https://${r.host}/jobs/${id}?tab=Documents`,
+      by: doc.source === 'noelle' ? 'noelle' : 'alexis', text: orderResume(doc.body), versions: versions.map(({ body, source, ...v }: any) => ({ ...v, by: source === 'noelle' ? 'noelle' : 'alexis' })), app_url: `https://${r.host}/jobs/${id}?tab=Documents`,
     });
   }
 

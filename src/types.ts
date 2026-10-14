@@ -47,7 +47,7 @@ export interface OutreachDraft {
   id: number; job_id: number; contact_id: number | null; recipient: 'hiring_manager' | 'hr' | 'other';
   to_name: string; to_title: string; to_email: string; subject: string; body: string; tailored: string;
   status: OutreachStatus; approved_at: string | null; sent_at: string | null; sent_by: string | null;
-  error: string; approval_valid: boolean; replied: boolean; created_at: string; updated_at: string;
+  error: string; approval_valid: boolean; replied: boolean; attachment_names?: string[]; created_at: string; updated_at: string;
   company?: string; company_domain?: string; role_title?: string; applied_date?: string | null;
 }
 export interface OutreachRun { job_id: number; status: 'running' | 'ready' | 'needs_research' | 'failed'; note: string; started_by: string; started_at: string; finished_at: string | null; company?: string; company_domain?: string; role_title?: string }

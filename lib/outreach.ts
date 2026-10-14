@@ -9,7 +9,7 @@ import { HttpError, askJson, libraryContext, loadJob } from './ai.js';
 import { jobBrief } from './advisor.js';
 import { findPeople, type FoundPerson } from './people.js';
 import { hunterFind } from './hunter.js';
-import { sendEmail } from './gmail.js';
+import { checkAttachments, sendEmail, type Attachment } from './gmail.js';
 import { noDash } from '../src/lib/noDash.js';
 
 export type Recipient = 'hiring_manager' | 'hr';
@@ -33,13 +33,19 @@ export function ensureOutreachSchema() {
       sent_at TIMESTAMPTZ, sent_by TEXT, email_id INT, error TEXT NOT NULL DEFAULT '', history JSONB NOT NULL DEFAULT '[]',
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), deleted_at TIMESTAMPTZ)`);
     await q(`CREATE INDEX IF NOT EXISTS outreach_drafts_job ON outreach_drafts (job_id)`);
+    // files go out with the email; the digest is part of the approval so a swapped file needs approval again
+    await q(`ALTER TABLE outreach_drafts ADD COLUMN IF NOT EXISTS attachments JSONB NOT NULL DEFAULT '[]'`);
+    await q(`ALTER TABLE outreach_drafts ADD COLUMN IF NOT EXISTS attachment_names JSONB NOT NULL DEFAULT '[]'`);
+    await q(`ALTER TABLE outreach_drafts ADD COLUMN IF NOT EXISTS attach_digest TEXT NOT NULL DEFAULT ''`);
   })().catch((e) => { ready = null; throw e; });
   return ready;
 }
 
 /** What gets approved, so a send can prove it is the exact text she said yes to. */
-export const approvalHash = (d: { to_email: string; subject: string; body: string }) =>
-  createHash('sha256').update(`${d.to_email.trim().toLowerCase()}\n${d.subject}\n${d.body}`).digest('hex');
+export const approvalHash = (d: { to_email: string; subject: string; body: string; attach_digest?: string }) =>
+  createHash('sha256').update(`${d.to_email.trim().toLowerCase()}\n${d.subject}\n${d.body}${d.attach_digest ? `\n${d.attach_digest}` : ''}`).digest('hex');
+export const attachDigest = (atts: Attachment[]) =>
+  atts.length ? createHash('sha256').update(atts.map((a) => `${a.name}\n${a.mime}\n${a.data}`).join('\n')).digest('hex') : '';
 
 // ---- who to write to ----
 
@@ -199,7 +205,7 @@ async function context(job: any) {
   const [lib, brief, settings, tailored] = await Promise.all([
     libraryContext(), jobBrief(job),
     q(`SELECT value FROM settings WHERE key='portfolio_url'`),
-    q(`SELECT body FROM job_documents WHERE job_id=$1 AND kind='resume' AND deleted_at IS NULL ORDER BY version DESC, id DESC LIMIT 1`, [job.id]),
+    q(`SELECT body FROM job_documents WHERE job_id=$1 AND kind='resume' AND deleted_at IS NULL AND source <> 'noelle' ORDER BY version DESC, id DESC LIMIT 1`, [job.id]),   // her own versions, not Noelle's proposals
   ]);
   const resume = tailored[0]?.body ? `THE RESUME SHE SUBMITTED FOR THIS ROLE (the emails should agree with it):\n${String(tailored[0].body).slice(0, 6000)}\n\n` : '';
   const parsed = job.posting_parsed;
@@ -253,7 +259,8 @@ async function draftFor(job: any, picks: Pick[], extra = ''): Promise<Drafted[]>
 
 const DRAFT_COLS = `d.id, d.job_id, d.contact_id, d.recipient, d.to_name, d.to_title, d.to_email, d.subject, d.body, d.tailored, d.status,
   d.approved_at, d.sent_at, d.sent_by, d.email_id, d.error, d.created_at, d.updated_at,
-  (d.approved_hash IS NOT NULL AND d.approved_hash = encode(sha256(convert_to(lower(trim(d.to_email)) || E'\\n' || d.subject || E'\\n' || d.body, 'UTF8')), 'hex')) AS approval_valid,
+  (d.approved_hash IS NOT NULL AND d.approved_hash = encode(sha256(convert_to(lower(trim(d.to_email)) || E'\\n' || d.subject || E'\\n' || d.body || CASE WHEN d.attach_digest <> '' THEN E'\\n' || d.attach_digest ELSE '' END, 'UTF8')), 'hex')) AS approval_valid,
+  d.attachment_names,
   EXISTS (SELECT 1 FROM job_emails r JOIN job_emails s ON s.gmail_thread_id = r.gmail_thread_id
            WHERE s.id = d.email_id AND r.direction = 'received') AS replied`;
 
@@ -292,7 +299,7 @@ export async function outreachQueue(status?: string) {
 
 async function getDraft(id: number) {
   await ensureOutreachSchema();
-  const d = (await q(`SELECT ${DRAFT_COLS}, d.approved_hash, d.history FROM outreach_drafts d WHERE d.id=$1 AND d.deleted_at IS NULL`, [id]))[0];
+  const d = (await q(`SELECT ${DRAFT_COLS}, d.approved_hash, d.history, d.attach_digest FROM outreach_drafts d WHERE d.id=$1 AND d.deleted_at IS NULL`, [id]))[0];
   if (!d) throw new HttpError(404, 'No draft with that id');
   return d;
 }
@@ -327,7 +334,7 @@ export async function approveDraft(id: number) {
   if (!['drafted', 'failed'].includes(d.status)) throw new HttpError(409, d.status === 'approved' ? 'Already approved' : `Cannot approve a ${d.status} email`);
   if (!EMAIL_RE.test(d.to_email)) throw new HttpError(400, 'Add the recipient\'s email address before approving');
   if (!d.subject.trim() || !d.body.trim()) throw new HttpError(400, 'Subject and message cannot be empty');
-  await q(`UPDATE outreach_drafts SET status='approved', approved_at=now(), approved_hash=$1, error='', updated_at=now() WHERE id=$2`, [approvalHash(d), id]);
+  await q(`UPDATE outreach_drafts SET status='approved', approved_at=now(), approved_hash=$1, error='', updated_at=now() WHERE id=$2`, [approvalHash({ ...d, attach_digest: d.attach_digest }), id]);
   return getDraft(id);
 }
 
@@ -385,13 +392,17 @@ export async function createApprovedDraft(jobId: number, body: any) {
   const text = noDash(String(body.body || '')).trim();
   if (!EMAIL_RE.test(to_email)) throw new HttpError(400, 'Recipient email looks invalid');
   if (!subject || !text) throw new HttpError(400, 'Subject and message cannot be empty');
+  const atts: Attachment[] = body.attachments ?? [];
+  checkAttachments(atts);
+  const digest = attachDigest(atts);
   const contact = (await q(`SELECT * FROM job_contacts WHERE job_id=$1 AND deleted_at IS NULL AND (id=$2 OR lower(email)=lower($3)) ORDER BY (id=$2) DESC LIMIT 1`,
     [jobId, Number(body.contact_id) || 0, to_email]))[0];
   const seat: Seat = (contact && seatOf(contact)?.recipient) || 'other';
   const row = (await q(
-    `INSERT INTO outreach_drafts (job_id, contact_id, recipient, to_name, to_title, to_email, subject, body, tailored, status, approved_at, approved_hash)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Written by you on the Emails tab','approved',now(),$9) RETURNING id`,
-    [jobId, contact?.id ?? null, seat, contact?.name ?? '', contact?.title ?? '', to_email, subject, text, approvalHash({ to_email, subject, body: text })]))[0];
+    `INSERT INTO outreach_drafts (job_id, contact_id, recipient, to_name, to_title, to_email, subject, body, tailored, status, approved_at, approved_hash, attachments, attachment_names, attach_digest)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Written by you on the Emails tab','approved',now(),$9,$10,$11,$12) RETURNING id`,
+    [jobId, contact?.id ?? null, seat, contact?.name ?? '', contact?.title ?? '', to_email, subject, text, approvalHash({ to_email, subject, body: text, attach_digest: digest }),
+      JSON.stringify(atts.map((a) => ({ name: a.name, mime: a.mime, data: a.data }))), JSON.stringify(atts.map((a) => a.name)), digest]))[0];
   return getDraft(row.id);
 }
 
@@ -413,7 +424,9 @@ export async function sendDraft(id: number, by: 'alexis' | 'noelle') {
     [id, d.approved_hash]);
   if (!claimed.length) throw new HttpError(409, 'This email changed or was already sent. Read it again.');
   try {
-    const email = await sendEmail(d.job_id, d.to_email, d.subject, d.body);
+    const atts: Attachment[] = (await q(`SELECT attachments FROM outreach_drafts WHERE id=$1`, [id]))[0]?.attachments ?? [];
+    if (attachDigest(atts) !== (d.attach_digest || '')) throw new HttpError(409, 'The attached files changed after approval.');
+    const email = await sendEmail(d.job_id, d.to_email, d.subject, d.body, atts);
     await q(`UPDATE outreach_drafts SET status='sent', sent_at=now(), sent_by=$1, email_id=$2, error='', updated_at=now() WHERE id=$3`, [by, email.id, id]);
   } catch (e: any) {
     await q(`UPDATE outreach_drafts SET status='failed', error=$1, updated_at=now() WHERE id=$2`, [String(e?.message || 'Send failed').slice(0, 500), id]);

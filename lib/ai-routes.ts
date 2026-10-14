@@ -9,7 +9,7 @@ import { findPeople } from './people.js';
 import { search } from './search.js';
 import { noDash } from '../src/lib/noDash.js';
 import { orderResume } from '../src/lib/resumeOrder.js';
-import { HttpError, ask, libraryContext, loadJob, parseJson, postingOrThrow, saveDoc } from './ai.js';
+import { HttpError, ask, askJson, libraryContext, loadJob, parseJson, postingOrThrow, saveDoc } from './ai.js';
 import { answerTool, matchJob, toolsBlock } from './positioning.js';
 
 type Body = { job_id?: number; instructions?: string; kind?: string; contact_name?: string; contact_title?: string; resume_id?: number; tool?: string; used?: boolean | null };
@@ -37,6 +37,14 @@ export async function parseJob(job: any, posting: string) {
   vals.push(jobId);
   return (await q(`UPDATE jobs SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals))[0];
 }
+
+/** The tailored resume layout and rules, shared by tailoring and by revisions. */
+const TAILOR_FORMAT =
+      'Write a tailored one-page resume in EXACTLY this plain-text layout, nothing else (no code fences, no commentary):\n' +
+        'Line 1: the candidate\'s full name. Line 2: a short headline for the role being targeted. Line 3: one contact line (email · phone), all copied from the base resume or career facts; if missing use [YOUR NAME] and [email · phone]. Never add a location.\n' +
+        'Then sections, each starting with "## " and an uppercase title, e.g. "## SUMMARY", "## EXPERIENCE", "## EDUCATION", "## SKILLS". Order sections by what best fits the role.\n' +
+        'Inside a section, each job or school is one line "### Title | Dates", then one line "> Organization · City, ST", then bullets that each start with "- ". Summary and skills are plain lines. Use the exact titles and dates from the CAREER FACTS bio.\n' +
+        'Choose and lightly reword bullets from the BULLET BANK and the chosen resume version so they speak to the posting. Mirror the posting\'s keywords only where the material supports them. Keep facts, dates, and numbers unchanged. Strongest matches first. Must fit one page. Use the POSITIONING headline as line 2 when one is given. Match the level of the role: for manager and above, open the summary with "Senior", her total years, and her scope (teams, budgets, reach, revenue); for coordinator, specialist, associate, or assistant roles, never use the word "Senior" and lead with hands-on, directly relevant results. Use the SCOPE LINES. Inside every section list entries newest first (by end date, then start date). When the employer is in media, entertainment, publishing, or streaming, always include the MEDIA & ENTERTAINMENT EXPERIENCE section. Follow the RESUME LAYOUT RULES in the CAREER FACTS exactly.';
 
 export async function aiRoute(action: string, body: Body): Promise<any> {
   if (action === 'ask') return askRoute(body);
@@ -83,11 +91,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
   if (action === 'tailor') {
     const framing = lib.resumes.find((r: any) => r.id === (body.resume_id ?? job.resume_version_id));
     const text = await ask(
-      'Write a tailored one-page resume in EXACTLY this plain-text layout, nothing else (no code fences, no commentary):\n' +
-        'Line 1: the candidate\'s full name. Line 2: a short headline for the role being targeted. Line 3: one contact line (email · phone), all copied from the base resume or career facts; if missing use [YOUR NAME] and [email · phone]. Never add a location.\n' +
-        'Then sections, each starting with "## " and an uppercase title, e.g. "## SUMMARY", "## EXPERIENCE", "## EDUCATION", "## SKILLS". Order sections by what best fits the role.\n' +
-        'Inside a section, each job or school is one line "### Title | Dates", then one line "> Organization · City, ST", then bullets that each start with "- ". Summary and skills are plain lines. Use the exact titles and dates from the CAREER FACTS bio.\n' +
-        'Choose and lightly reword bullets from the BULLET BANK and the chosen resume version so they speak to the posting. Mirror the posting\'s keywords only where the material supports them. Keep facts, dates, and numbers unchanged. Strongest matches first. Must fit one page. Use the POSITIONING headline as line 2 when one is given. Match the level of the role: for manager and above, open the summary with "Senior", her total years, and her scope (teams, budgets, reach, revenue); for coordinator, specialist, associate, or assistant roles, never use the word "Senior" and lead with hands-on, directly relevant results. Use the SCOPE LINES. Inside every section list entries newest first (by end date, then start date). When the employer is in media, entertainment, publishing, or streaming, always include the MEDIA & ENTERTAINMENT EXPERIENCE section. Follow the RESUME LAYOUT RULES in the CAREER FACTS exactly.' +
+      TAILOR_FORMAT +
         (body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''),
       `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nBASE RESUME FRAMING:\n${framing ? framing.body : '(none chosen, use the bullet bank)'}\n\nCANDIDATE MATERIAL:\n${lib.text}${tools}${angleBlock}`,
       16000,
@@ -239,4 +243,38 @@ async function resumeRoute(body: { request?: string; feedback?: string; item_id?
   const n = (await q(`SELECT count(*)::int AS n FROM library_items WHERE kind='resume' AND (title = $1 OR title LIKE $2)`, [rootTitle, `${rootTitle} v%`]))[0].n;
   const title = noDash(n ? `${rootTitle} v${n + 1}` : rootTitle);
   return (await q(`INSERT INTO library_items (kind, title, body, tags) VALUES ('resume', $1, $2, $3) RETURNING *`, [title, orderResume(text), ['generated']]))[0];
+}
+
+/**
+ * A new version of a job's tailored resume, revised by direction (Noelle uses this). The base version is never
+ * changed. Careering's own writer does the rewrite, held to the Library and CAREER FACTS, so a direction that
+ * the record does not support is left out and reported back instead of invented.
+ */
+export async function reviseResume(jobId: number, opts: { instructions: string; version?: number | null; by: string }) {
+  const job = await loadJob(jobId);
+  const instructions = noDash(String(opts.instructions || '')).trim();
+  if (!instructions) throw new HttpError(400, 'Say what to change');
+  const base = (await q(
+    `SELECT * FROM job_documents WHERE job_id=$1 AND kind='resume' AND deleted_at IS NULL ${opts.version ? 'AND version=$2' : ''} ORDER BY version DESC, id DESC LIMIT 1`,
+    opts.version ? [jobId, opts.version] : [jobId]))[0];
+  if (!base) throw new HttpError(404, opts.version ? `No resume version ${opts.version} on this job` : 'No resume has been tailored for this job yet');
+  const lib = await libraryContext();
+  const posting = String(job.posting_text || '').trim() ? String(job.posting_text).slice(0, 20000) : '(posting text not saved)';
+  const [tools, angle] = await Promise.all([toolsBlock(job), jobBrief(job)]);
+  const out = await askJson<{ resume: string; changes: string[]; not_done: string[] }>(
+    TAILOR_FORMAT + '\n\nRevise the CURRENT RESUME according to the DIRECTION. Change only what the direction asks for and keep the same layout. ' +
+      'Every fact, title, date, number, tool, and skill must come from the CAREER FACTS, bullet bank, or the current resume. If the direction asks for something the record does not support (a tool, metric, title, or experience that is not there), leave it out and list it in not_done with a short reason. ' +
+      'resume is the full revised resume text. changes is a short list of what you changed.',
+    `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nCURRENT RESUME (version ${base.version}):\n${base.body}\n\nDIRECTION: ${instructions}\n\nCANDIDATE MATERIAL:\n${lib.text}${tools}${angle ? `\n\n${angle}` : ''}`,
+    { properties: { resume: { type: 'string' }, changes: { type: 'array', items: { type: 'string' } }, not_done: { type: 'array', items: { type: 'string' } } }, required: ['resume', 'changes', 'not_done'] },
+    16000,
+  );
+  const text = orderResume(String(out.resume || '').replace(/^```\w*\n?|```$/g, '').trim());
+  if (text.length < 300 || !/##\s/.test(text)) throw new HttpError(502, 'The revision came back incomplete. Please try again.');
+  const v = (await q(`SELECT coalesce(max(version),0)+1 AS v FROM job_documents WHERE job_id=$1 AND kind='resume'`, [jobId]))[0].v;
+  const who = opts.by === 'noelle' ? 'Noelle revision' : 'Revision';
+  const doc = (await q(
+    `INSERT INTO job_documents (job_id, kind, title, body, version, source) VALUES ($1,'resume',$2,$3,$4,$5) RETURNING *`,
+    [jobId, noDash(`Tailored resume for ${job.company || 'job'} (${who} of v${base.version})`), text, v, opts.by === 'noelle' ? 'noelle' : 'ai']))[0];
+  return { doc, base_version: base.version, changes: out.changes || [], not_done: out.not_done || [] };
 }

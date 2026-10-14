@@ -100,6 +100,15 @@ export interface Attachment { name: string; mime: string; data: string }   // da
 const OK_MIME = /^(application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document|text\/plain|image\/(png|jpeg))$/;
 const wrap76 = (b64: string) => b64.replace(/(.{76})/g, '$1\r\n');
 
+/** The same limits for sending now and for saving an approved email Noelle will send later. */
+export function checkAttachments(attachments: Attachment[]) {
+  if (!Array.isArray(attachments)) throw new HttpError(400, 'Attachments must be a list');
+  if (attachments.length > 5) throw new HttpError(400, 'Attach at most 5 files');
+  for (const a of attachments) if (!a || typeof a.name !== 'string' || typeof a.data !== 'string' || typeof a.mime !== 'string') throw new HttpError(400, 'An attachment is missing its name or data');
+  if (attachments.reduce((n, a) => n + a.data.length, 0) > 4_000_000) throw new HttpError(400, 'Attachments are too large (about 3 MB total)');
+  for (const a of attachments) if (!OK_MIME.test(a.mime)) throw new HttpError(400, `${a.name}: only PDF, Word, text, PNG, or JPG files can be attached`);
+}
+
 export function buildMime(to: string, subject: string, body: string, attachments: Attachment[]): string {
   const boundary = `careering_${Date.now().toString(36)}`;
   const lines = [`To: ${to}`, `Subject: ${encHeader(subject)}`, 'MIME-Version: 1.0'];
@@ -119,9 +128,7 @@ export function buildMime(to: string, subject: string, body: string, attachments
 export async function sendEmail(jobId: number, to: string, subject: string, body: string, attachments: Attachment[] = []) {
   subject = noDash(subject); body = noDash(body);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) throw new HttpError(400, 'Recipient email looks invalid');
-  if (attachments.length > 5) throw new HttpError(400, 'Attach at most 5 files');
-  if (attachments.reduce((n, a) => n + a.data.length, 0) > 4_000_000) throw new HttpError(400, 'Attachments are too large (about 3 MB total)');
-  for (const a of attachments) if (!OK_MIME.test(a.mime)) throw new HttpError(400, `${a.name}: only PDF, Word, text, PNG, or JPG files can be attached`);
+  checkAttachments(attachments);
   const { email } = await gmailStatus();
   const raw = buildMime(to, subject, body, attachments);
   const sent = await gmail('messages/send', { method: 'POST', body: JSON.stringify({ raw: b64url(raw) }) });

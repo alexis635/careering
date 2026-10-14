@@ -178,11 +178,12 @@ export default function JobDetail() {
   async function approveForNoelle() {
     const withLink = usePortfolio && portfolio.trim() ? `${compose.body}\n\nPortfolio: ${portfolio.trim()}` : compose.body;
     if (!compose.to.trim() || !compose.subject.trim() || !compose.body.trim()) { setMailMsg('Fill in To, Subject, and the message first.'); return; }
-    if (!confirm(`Approve this email to ${compose.to} for Noelle to send?\n\nShe sends exactly this from ${gmail?.email} on her next check. You can take it back on the Outreach tab until then.`)) return;
+    const list = atts.length ? `\nAttachments: ${atts.map((a) => a.name).join(', ')}` : '';
+    if (!confirm(`Approve this email to ${compose.to} for Noelle to send?${list}\n\nShe sends exactly this from ${gmail?.email} on her next check. You can take it back on the Outreach tab until then.`)) return;
     setBusy('approve'); setMailMsg('');
     try {
-      await api.post(`jobs/${id}/outreach/approved`, { to: compose.to, subject: compose.subject, body: withLink, contact_id: Number(draftContact) || undefined });
-      setCompose({ to: '', subject: '', body: '' }); setMailMsg('Approved. Noelle will send it; it shows on the Outreach tab.');
+      await api.post(`jobs/${id}/outreach/approved`, { to: compose.to, subject: compose.subject, body: withLink, attachments: atts, contact_id: Number(draftContact) || undefined });
+      setCompose({ to: '', subject: '', body: '' }); setAtts([]); setMailMsg('Approved. Noelle will send it; it shows on the Outreach tab.');
     } catch (e: any) { setMailMsg(e.message); } finally { setBusy(null); }
   }
   async function syncMail() {
@@ -429,8 +430,8 @@ export default function JobDetail() {
               </div>
               <div className="flex items-center gap-3">
                 <button className="btn" disabled={busy === 'send'}><Mail size={14} /> {busy === 'send' ? 'Sending…' : 'Send'}</button>
-                <button type="button" className="btn-ghost" disabled={!!busy || atts.length > 0} onClick={approveForNoelle}
-                  title={atts.length ? 'Attachments only go out when you send it yourself' : 'Noelle sends exactly this on her next check. Track it on the Outreach tab.'}>
+                <button type="button" className="btn-ghost" disabled={!!busy} onClick={approveForNoelle}
+                  title="Noelle sends exactly this, attachments included, on her next check. Track it on the Outreach tab.">
                   <Check size={14} /> {busy === 'approve' ? 'Saving…' : 'Approve for Noelle'}
                 </button>
                 {mailMsg && <span className="text-sm text-teal">{mailMsg}</span>}

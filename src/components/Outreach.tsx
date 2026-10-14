@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { Check, Loader2, Mail, RotateCcw, Send, Sparkles, Undo2 } from 'lucide-react';
+import { Check, Loader2, Mail, Paperclip, RotateCcw, Send, Sparkles, Undo2 } from 'lucide-react';
 import { api } from '../api';
 import type { OutreachDraft, OutreachRun } from '../types';
 
@@ -72,6 +72,7 @@ export function DraftCard({ draft, onChange }: { draft: OutreachDraft; onChange:
             <textarea className="input leading-relaxed" rows={Math.min(16, Math.max(8, f.body.split('\n').length + 2))} value={f.body} disabled={!editable}
               onChange={(e) => setF({ ...f, body: e.target.value })} />
           </div>
+          {!!draft.attachment_names?.length && <div className="flex flex-wrap gap-1.5">{draft.attachment_names.map((n) => <span key={n} className="inline-flex items-center gap-1 rounded bg-beige px-2 py-0.5 text-xs text-teal"><Paperclip size={11} /> {n}</span>)}</div>}
           {dirty && draft.status === 'approved' && <p className="text-xs text-teal">Saving an edit takes this back to review, so you approve exactly what goes out.</p>}
 
           {showRewrite && editable && (
