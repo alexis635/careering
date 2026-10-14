@@ -141,6 +141,24 @@ function shape(j: any, host: string) {
   };
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// The seat word goes first in the notes, the same way Find people writes it, so outreach knows who is who.
+const SEATS: Record<string, string> = { hiring_manager: 'Hiring manager', hr: 'HR / recruiting', department_lead: 'Department lead', vp: 'VP of the department', ceo: 'CEO', other: 'Other' };
+function contactView(x: any) {
+  const seat = Object.entries(SEATS).find(([, label]) => String(x.notes || '').startsWith(label))?.[0] ?? null;
+  return { id: x.id, name: x.name, title: x.title || null, email: x.email || null, seat, added_by: x.source === 'noelle' ? 'noelle' : 'alexis', notes: x.notes || null };
+}
+/** A job already in outreach that was waiting on a contact: draft the missing email now (never sends). */
+async function maybeDraftMissing(jobId: number, job: any): Promise<boolean> {
+  if (!['applied', 'screening', 'interviewing'].includes(job.stage)) return false;
+  await outreach.ensureOutreachSchema();
+  const run = (await q(`SELECT status FROM outreach_runs WHERE job_id=$1`, [jobId]))[0];
+  if (!run || !['needs_research', 'failed'].includes(run.status)) return false;
+  if (!(await outreach.claimRun(jobId, AGENT))) return false;
+  waitUntil(outreach.runOutreach(jobId));
+  return true;
+}
+
 function outreachView(d: any, host: string) {
   return {
     id: d.id, job_id: d.job_id, company: d.company ?? undefined, title: d.role_title ?? undefined,
@@ -338,6 +356,64 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
       job_id: id, company: job.company, title: job.title, version: doc.version, document_title: doc.title, created_at: doc.created_at,
       text: orderResume(doc.body), versions: versions.map(({ body, ...v }: any) => v), app_url: `https://${r.host}/jobs/${id}?tab=Documents`,
     });
+  }
+
+  // ---- contacts: she adds the people (and emails) she finds, so Careering never pays Hunter twice for them ----
+  // GET /jobs/:id/contacts, POST /jobs/:id/contacts, PATCH /jobs/:id/contacts/:cid (fill email/title on any contact, rename only hers)
+  if (c === 'contacts') {
+    const job = await getJob(id, r.host);
+    if (!job) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
+    const cid = r.parts[3] ? Number(r.parts[3]) : null;
+    if (!cid && r.method === 'GET') {
+      const rows = await q(`SELECT id, name, title, email, source, notes FROM job_contacts WHERE job_id=$1 AND deleted_at IS NULL ORDER BY id`, [id]);
+      return ok(rows.map((x: any) => contactView(x)));
+    }
+    const allowed = ['name', 'title', 'email', 'seat', 'source_url', 'email_source', 'email_confidence', 'note'];
+    const unknown = Object.keys(body).filter((f) => !allowed.includes(f));
+    if ((r.method === 'POST' || r.method === 'PATCH') && unknown.length) return fail(400, 'unknown_field', `Unknown field(s): ${unknown.join(', ')}. Allowed: ${allowed.join(', ')}`);
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+    if (email && !EMAIL_RE.test(email)) return fail(400, 'invalid_field', 'email does not look like an address');
+    if ('seat' in body && !SEATS[body.seat]) return fail(400, 'invalid_field', `seat must be one of: ${Object.keys(SEATS).join(', ')}`);
+    if ('email_confidence' in body && (typeof body.email_confidence !== 'number' || body.email_confidence < 0 || body.email_confidence > 100)) return fail(400, 'invalid_field', 'email_confidence must be a number from 0 to 100');
+    const emailNote = email ? `Email from ${String(body.email_source || 'Noelle').slice(0, 40)}${typeof body.email_confidence === 'number' ? `, confidence ${Math.round(body.email_confidence)}%` : ''}` : '';
+
+    if (!cid && r.method === 'POST') {
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (!name) return fail(400, 'missing_field', 'name is required');
+      if (!body.seat) return fail(400, 'missing_field', `seat is required: ${Object.keys(SEATS).join(', ')}`);
+      const existing = await q(`SELECT * FROM job_contacts WHERE job_id=$1 AND deleted_at IS NULL`, [id]);
+      const dup = existing.find((x: any) => sameName(x.name, name) || (email && String(x.email).toLowerCase() === email));
+      if (dup) return fail(409, 'duplicate', 'This person is already on the job. To add a missing email, PATCH the contact.', { existing: contactView(dup) });
+      const notes = [SEATS[body.seat], body.source_url ? `Found at ${String(body.source_url).trim()}` : '', emailNote, body.note ? String(body.note).trim().slice(0, 500) : '', 'Added by Noelle'].filter(Boolean).join('. ');
+      const row = (await q(`INSERT INTO job_contacts (job_id, name, title, email, source, notes) VALUES ($1,$2,$3,$4,'noelle',$5) RETURNING *`,
+        [id, name, String(body.title || '').trim(), email, notes]))[0];
+      const started = await maybeDraftMissing(id, job);
+      return { ...ok({ ...contactView(row), outreach_started: started }, 201), audit: { job_id: id, summary: `Added contact ${name}${email ? ` (${email})` : ''} to ${job.company}, ${job.title}${started ? '; outreach drafting started' : ''}`, after: contactView(row) } };
+    }
+
+    if (cid && r.method === 'PATCH') {
+      const before = (await q(`SELECT * FROM job_contacts WHERE id=$1 AND job_id=$2 AND deleted_at IS NULL`, [cid, id]))[0];
+      if (!before) return fail(404, 'not_found', 'No contact with that id on this job');
+      const mine = before.source === 'noelle';
+      if (!mine && ('name' in body || 'seat' in body)) return fail(403, 'not_yours', 'You can add an email or title to contacts Alexis added, but not rename them or change their seat.');
+      if (!mine && email && before.email && before.email.toLowerCase() !== email) return fail(409, 'email_exists', `This contact already has ${before.email}. Add a note to the job if you think it is wrong.`);
+      const sets: string[] = []; const vals: any[] = [];
+      const set = (col: string, v: any) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
+      if (email) set('email', email);
+      if (typeof body.title === 'string' && (mine || !before.title)) set('title', body.title.trim());
+      if (mine && typeof body.name === 'string' && body.name.trim()) set('name', body.name.trim());
+      const addNotes = [mine && body.seat ? SEATS[body.seat] : '', emailNote, body.note ? String(body.note).trim().slice(0, 500) : ''].filter(Boolean).join('. ');
+      if (addNotes) { vals.push(mine && body.seat ? `${addNotes}. ${String(before.notes || '').replace(/^(HR \/ recruiting|Hiring manager|Department lead|VP of the department|CEO|Other)\.\s*/, '')}` : `${before.notes ? `${before.notes}. ` : ''}${addNotes}`); sets.push(`notes = $${vals.length}`); }
+      if (!sets.length) return fail(400, 'empty_update', 'Send at least one of: email, title, note (and name or seat on contacts you added)');
+      vals.push(cid);
+      const row = (await q(`UPDATE job_contacts SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals))[0];
+      // an approved draft keeps its exact address; only drafts still waiting for review pick up the new email
+      if (email) await q(`UPDATE outreach_drafts SET to_email=$1, updated_at=now() WHERE contact_id=$2 AND status='drafted' AND to_email=''`, [email, cid]).catch(() => {});
+      const started = email ? await maybeDraftMissing(id, job) : false;
+      return { ...ok({ ...contactView(row), outreach_started: started }), audit: { job_id: id, summary: `Updated contact ${row.name} on ${job.company}, ${job.title}: ${Object.keys(body).join(', ')}`, before: contactView(before), after: contactView(row) } };
+    }
+    if (r.method === 'DELETE') return fail(403, 'not_allowed', 'Only Alexis can remove contacts. Add a note to the job instead.');
+    return fail(405, 'method_not_allowed', `${r.method} is not supported here`);
   }
 
   // GET /jobs/:id/outreach, POST /jobs/:id/outreach/start (drafts only; nothing is sent)
