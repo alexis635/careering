@@ -43,7 +43,7 @@ const JOB_FIELDS = [
   'lane_id', 'type', 'company', 'role_title', 'source_link', 'stage', 'closed_outcome',
   'salary_range', 'location', 'remote_type', 'applied_date', 'deadline', 'interview_dates',
   'contact_person', 'contact_notes', 'posting_text', 'match_notes', 'resume_version_id',
-  'interview_prep', 'fit', 'angle', 'angle_focus', 'angle_chat', 'advisor_notes', 'advisor_tone',
+  'interview_prep', 'fit', 'angle', 'angle_focus', 'angle_chat', 'advisor_notes', 'advisor_tone', 'drive_folder_url', 'prep_complete',
 ];
 const LANE_FIELDS = ['name', 'start_date', 'target_date', 'status', 'notes', 'color', 'position', 'stages_config'];
 const JSON_FIELDS = ['interview_dates', 'stages_config', 'angle_focus', 'angle_chat'];

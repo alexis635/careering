@@ -22,8 +22,19 @@ const GROUNDING =
   'Write in a natural, direct voice. Avoid filler and buzzwords. ' +
   'NEVER use em dashes or en dashes anywhere in your output. Use commas, periods, colons, or the word "to" for ranges (for example "Apr 2023 to May 2026").';
 
+/** Anthropic's own errors (rate limits, overload, outages) as HttpErrors, so callers say "busy, try again" instead of a bare server error. */
+async function call(params: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> {
+  try {
+    return await client().messages.create(params);
+  } catch (e: any) {
+    if (!(e instanceof Anthropic.APIError)) throw e;
+    const busy = e.status === 429 || e.status === 529 || (e.status ?? 0) >= 500 || e instanceof Anthropic.APIConnectionError;
+    throw new HttpError(busy ? 503 : 502, busy ? 'The AI is busy right now. Wait a minute and try again.' : `The AI request failed: ${String(e.message).slice(0, 200)}`);
+  }
+}
+
 export async function ask(system: string, user: string, maxTokens = 6000): Promise<string> {
-  const res = await client().messages.create({
+  const res = await call({
     model: MODEL,
     // Sonnet 5 can spend part of max_tokens thinking before it writes, so leave generous room.
     max_tokens: Math.max(maxTokens, 6000),
@@ -38,7 +49,7 @@ export async function ask(system: string, user: string, maxTokens = 6000): Promi
 
 /** Structured answer through a tool call, so long JSON with quotes in it always arrives well formed. Dashes are scrubbed from every string. */
 export async function askJson<T>(system: string, user: string, schema: Record<string, any>, maxTokens = 12000): Promise<T> {
-  const res = await client().messages.create({
+  const res = await call({
     model: MODEL,
     max_tokens: Math.max(maxTokens, 6000),
     system: `${GROUNDING}\n\n${system}`,

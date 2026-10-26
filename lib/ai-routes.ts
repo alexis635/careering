@@ -11,6 +11,7 @@ import { noDash } from '../src/lib/noDash.js';
 import { orderResume } from '../src/lib/resumeOrder.js';
 import { HttpError, ask, askJson, libraryContext, loadJob, parseJson, postingOrThrow, saveDoc } from './ai.js';
 import { answerTool, matchJob, toolsBlock } from './positioning.js';
+import { applySignature, emailSignature } from './outreach.js';
 
 type Body = { job_id?: number; instructions?: string; kind?: string; contact_name?: string; contact_title?: string; resume_id?: number; tool?: string; used?: boolean | null };
 
@@ -166,7 +167,7 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
       6000,
     );
     const label = action === 'outreach' ? 'Outreach email' : action === 'follow_up' ? 'Follow up email' : 'Thank you email';
-    return saveDoc(jobId, 'outreach', `${label} for ${job.company || 'job'}`, text);
+    return saveDoc(jobId, 'outreach', `${label} for ${job.company || 'job'}`, applySignature(text, await emailSignature()));
   }
 
   // 5. Cover letter
@@ -177,7 +178,8 @@ export async function aiRoute(action: string, body: Body): Promise<any> {
       `${jobHeader(job)}\n\nJOB POSTING:\n${posting}\n\nCANDIDATE MATERIAL:\n${lib.text}${tools}${angleBlock}${body.instructions ? `\n\nExtra instructions: ${body.instructions}` : ''}`,
       6000,
     );
-    return saveDoc(jobId, 'cover_letter', `Cover letter for ${job.company || 'job'}`, text);
+    // the closing name matches the email signature's name line (the letter's header already has the contact line)
+    return saveDoc(jobId, 'cover_letter', `Cover letter for ${job.company || 'job'}`, applySignature(text, (await emailSignature()).split('\n')[0]));
   }
 
   throw new HttpError(404, 'Unknown AI action');

@@ -1,6 +1,8 @@
 import { noDash } from './noDash.js';
 import { orderResume } from './resumeOrder.js';
+import { createElement as h } from 'react';
 import { Document, Font, Page, Text, View, StyleSheet, pdf } from '@react-pdf/renderer';
+// Plain .ts (createElement, not JSX) so the server's PDF endpoint can load this same layout on Vercel.
 
 // Never split words across lines (no "engage-ment").
 Font.registerHyphenationCallback((word) => [word]);
@@ -68,34 +70,19 @@ export function parseResume(src: string): Block[] {
 export function ResumeDoc({ text, layout = { fs: 8.8, g: 1 } }: { text: string; layout?: Layout }) {
   const s = mk(layout);
   const blocks = parseResume(orderResume(noDash(text)));   // jobs always newest first, whatever order the text has
-  return (
-    <Document>
-      <Page size="LETTER" style={s.page}>
-        {blocks.map((b, i) => {
-          switch (b.t) {
-            case 'name': return <Text key={i} style={s.name}>{b.text}</Text>;
-            case 'headline': return <Text key={i} style={s.headline}>{b.text}</Text>;
-            case 'sub': return <Text key={i} style={s.sub}>{b.text}</Text>;
-            case 'contact': return <Text key={i} style={s.contact}>{b.text}</Text>;
-            case 'section': return <Text key={i} style={s.section} minPresenceAhead={40}>{b.text}</Text>;
-            case 'entry': return (
-              <View key={i} style={s.entry} wrap={false} minPresenceAhead={48}>
-                <Text style={s.entryLeft}>{b.left}</Text>
-                {b.right ? <Text style={s.entryRight}>{b.right}</Text> : null}
-              </View>
-            );
-            case 'bullet': return (
-              <View key={i} style={s.bullet} wrap={false}>
-                <Text style={s.dot}>•</Text>
-                <Text style={s.bulletText}>{b.text}</Text>
-              </View>
-            );
-            default: return <Text key={i} style={s.para}>{b.text}</Text>;
-          }
-        })}
-      </Page>
-    </Document>
-  );
+  const T = (style: any, text: string, extra: any = {}) => h(Text, { style, ...extra }, text);
+  return h(Document, null, h(Page, { size: 'LETTER', style: s.page }, blocks.map((b, i) => {
+    switch (b.t) {
+      case 'name': return T(s.name, b.text, { key: i });
+      case 'headline': return T(s.headline, b.text, { key: i });
+      case 'sub': return T(s.sub, b.text, { key: i });
+      case 'contact': return T(s.contact, b.text, { key: i });
+      case 'section': return T(s.section, b.text, { key: i, minPresenceAhead: 40 });
+      case 'entry': return h(View, { key: i, style: s.entry, wrap: false, minPresenceAhead: 48 }, T(s.entryLeft, b.left), b.right ? T(s.entryRight, b.right) : null);
+      case 'bullet': return h(View, { key: i, style: s.bullet, wrap: false }, T(s.dot, '•'), T(s.bulletText, b.text));
+      default: return T(s.para, b.text, { key: i });
+    }
+  })));
 }
 
 export type RenderFn = (layout: Layout) => Promise<Uint8Array>;
@@ -173,23 +160,19 @@ export function LetterDoc({ text, layout = { fs: 11, g: 1 } }: { text: string; l
   const s = mkLetter(layout);
   const { name, contact, paras } = parseLetter(noDash(text));
   const today = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  return (
-    <Document>
-      <Page size="LETTER" style={s.page}>
-        {name ? <Text style={s.name}>{name}</Text> : null}
-        {contact ? <Text style={s.contact}>{contact}</Text> : null}
-        <Text style={s.date}>{today}</Text>
-        {paras.map((p, i) => <Text key={i} style={s.para} orphans={2} widows={2}>{p}</Text>)}
-      </Page>
-    </Document>
-  );
+  return h(Document, null, h(Page, { size: 'LETTER', style: s.page },
+    name ? h(Text, { style: s.name }, name) : null,
+    contact ? h(Text, { style: s.contact }, contact) : null,
+    h(Text, { style: s.date }, today),
+    ...paras.map((p, i) => h(Text, { key: i, style: s.para, orphans: 2, widows: 2 }, p)),
+  ));
 }
 
 export type PdfKind = 'resume' | 'letter' | 'case';
 
 async function fitPdf(kind: PdfKind, text: string) {
   const render: RenderFn = async (layout) => {
-    const doc = kind === 'letter' ? <LetterDoc text={text} layout={layout} /> : <ResumeDoc text={text} layout={layout} />;
+    const doc = h(kind === 'letter' ? LetterDoc : ResumeDoc, { text, layout }) as any;
     return new Uint8Array(await (await pdf(doc).toBlob()).arrayBuffer());
   };
   // a case document may run to two pages at a comfortable size; it only shrinks to one page if a modest size gets it there

@@ -261,7 +261,8 @@ async function draftFor(job: any, picks: Pick[], extra = '', guide = GUIDE): Pro
   );
   const drafts = (out.drafts || []).filter((d) => d?.subject?.trim() && d?.body?.trim());
   if (!drafts.length) throw new HttpError(502, 'The AI returned no drafts this time. Please try again.');
-  return drafts.map((d) => ({ ...d, subject: noDash(d.subject).trim(), body: withPortfolio(noDash(d.body).replace(/^Subject:.*\n+/i, ''), ctx.portfolio), tailored: noDash(String(d.tailored || '')).trim() }));
+  const signature = await emailSignature();
+  return drafts.map((d) => ({ ...d, subject: noDash(d.subject).trim(), body: withPortfolio(applySignature(noDash(d.body).replace(/^Subject:.*\n+/i, ''), signature), ctx.portfolio), tailored: noDash(String(d.tailored || '')).trim() }));
 }
 
 // ---- reading ----
@@ -415,6 +416,30 @@ export async function createApprovedDraft(jobId: number, body: any) {
   return getDraft(row.id);
 }
 
+// ---- the sign off on every email Careering writes: settings key 'email_signature', else this ----
+const DEFAULT_SIGNATURE = 'Alexis D. Granville\nM: 470.792.9320';
+export async function emailSignature(): Promise<string> {
+  const row = (await q(`SELECT value FROM settings WHERE key='email_signature'`).catch(() => []))[0];
+  return String(row?.value || '').trim() || DEFAULT_SIGNATURE;
+}
+const SIGN_OFF = /^(best|best regards|all the best|warm regards|kind regards|regards|warmly|thanks|thank you|many thanks|sincerely|cheers)[,.!]?$/i;
+/** Whatever name lines follow the sign off become the signature; a trailing "Portfolio:" line stays last. */
+export function applySignature(body: string, signature: string): string {
+  let text = body.trim();
+  const tail = text.match(/\n+(Portfolio: \S+)\s*$/);
+  if (tail) text = text.slice(0, tail.index).trim();
+  const lines = text.split('\n');
+  let k = -1;
+  for (let i = lines.length - 1; i >= Math.max(0, lines.length - 6); i--) if (SIGN_OFF.test(lines[i].trim())) { k = i; break; }
+  if (k < 0) {
+    // no sign off line: drop a bare name or phone line left at the end ("Alexis", "M: ...") before adding one
+    const first = signature.split(/\s+/)[0].toLowerCase();
+    while (lines.length && (lines[lines.length - 1].trim() === '' || (lines[lines.length - 1].trim().toLowerCase().startsWith(first) && lines[lines.length - 1].trim().length <= 40) || /^(m|mobile|phone|p)[:.]/i.test(lines[lines.length - 1].trim()))) lines.pop();
+  }
+  text = k >= 0 ? [...lines.slice(0, k + 1), signature].join('\n') : `${lines.join('\n').trim()}\n\nBest,\n${signature}`;
+  return tail ? `${text}\n\n${tail[1]}` : text;
+}
+
 /**
  * Noelle stages a draft for one contact. It always lands as 'drafted': only Alexis can approve it, and nothing
  * here sends. Without a subject and body, Careering writes it from the job brief (her angle and advisor notes).
@@ -440,12 +465,26 @@ export async function stageDraft(jobId: number, body: { contact_id: number; subj
     const [d] = await draftFor(job, [{ recipient, contact }], extra, job.stage === 'Saved' ? PRE_APPLY_GUIDE : GUIDE);
     subject = d.subject; text = d.body; tailored = `Staged by Noelle. ${d.tailored}`.trim();
   }
+  text = applySignature(text, await emailSignature());
   const seat: Seat = connection ? 'other' : seatOf(contact)?.recipient ?? 'other';
   const row = (await q(
     `INSERT INTO outreach_drafts (job_id, contact_id, recipient, to_name, to_title, to_email, subject, body, tailored, status, drafted_by)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'drafted','noelle') RETURNING id`,
     [jobId, contact.id, seat, contact.name, contact.title || '', EMAIL_RE.test(contact.email) ? contact.email : '', subject, text, tailored]))[0];
   return getDraft(row.id);
+}
+
+/** Noelle fixes a draft she staged, only while it is still waiting for Alexis. The signature is reapplied. */
+export async function editStagedDraft(jobId: number, id: number, body: { subject?: string; body?: string }) {
+  const d = await getDraft(id);
+  if (d.job_id !== jobId) throw new HttpError(404, 'No draft with that id on this job');
+  if (d.drafted_by !== 'noelle') throw new HttpError(403, 'You can only edit drafts you staged. Careering and Alexis drafts are hers to edit.');
+  if (d.status !== 'drafted') throw new HttpError(409, `This draft is ${d.status}. Only drafts still waiting for Alexis can be edited.`);
+  const subject = body.subject !== undefined ? noDash(String(body.subject)).trim() : d.subject;
+  const text = applySignature(body.body !== undefined ? noDash(String(body.body)).trim() : d.body, await emailSignature());
+  if (!subject || !text) throw new HttpError(400, 'Subject and body cannot be empty');
+  await q(`UPDATE outreach_drafts SET subject=$1, body=$2, updated_at=now() WHERE id=$3 AND status='drafted'`, [subject, text, id]);
+  return getDraft(id);
 }
 
 // ---- sending (Alexis's Send button, or Noelle through the agent API) ----

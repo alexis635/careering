@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
 
 /*
- Form editor for the resume text format (see lib/resumePdf.tsx). It reads the text into pieces
+ Form editor for the resume text format (see lib/resumePdf.ts). It reads the text into pieces
  (header, sections, entries, bullets), lets you edit each piece, and writes the same text back,
  so the PDF, the AI, and the Library all keep working from one source.
 */

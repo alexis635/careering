@@ -261,6 +261,7 @@ export default function LaneView() {
                     </Link>
                     <div className="mt-2 flex items-center gap-1.5 flex-wrap">
                       <FitBadge fit={j.fit} />
+                      {j.prep_complete && <span className="text-[10px] uppercase tracking-wide bg-teal text-white rounded px-1.5 py-0.5" title="Noelle finished the prep. Ready for you to submit.">Prep ready</span>}
                       {j.created_by === 'noelle' && <span className="text-[10px] uppercase tracking-wide bg-sky/60 text-navy rounded px-1.5 py-0.5" title="Added by Noelle">Noelle</span>}
                       {j.type === 'logistics' && <span className="text-[10px] uppercase bg-beige rounded px-1.5 py-0.5">logistics</span>}
                       {stage === 'Closed' ? (

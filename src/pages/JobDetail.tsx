@@ -240,12 +240,18 @@ export default function JobDetail() {
             <span className="rounded-full bg-beige text-navy px-2.5 py-1 font-semibold">{job.closed_outcome ? stageInfo(lane).outcome(job.closed_outcome) : stageInfo(lane).label(job.stage)}</span>
             {job.fit && <FitBadge fit={job.fit} />}
             {job.angle?.trim() && <span className="rounded-full bg-white/15 px-2.5 py-1 text-white">Your angle is set</span>}
+            {job.prep_complete && (
+              <span className="rounded-full bg-teal px-2.5 py-1 text-white" title="Noelle finished the prep. Submitting and moving the stage are still yours.">
+                Prep ready <button className="ml-1 underline text-sky hover:text-white" title="Clear the prep ready flag" onClick={() => save({ prep_complete: false })}>clear</button>
+              </span>
+            )}
             {job.deadline && <span className="rounded-full bg-white/15 px-2.5 py-1 text-white">Deadline {format(new Date(job.deadline.slice(0, 10) + 'T12:00:00'), 'MMM d')}</span>}
             {[job.location, job.remote_type].filter(Boolean).length > 0 && <span className="text-sky">{[job.location, job.remote_type].filter(Boolean).join(' · ')}</span>}
           </div>
         </div>
         <div className="flex items-center gap-2">
           {job.source_link && <a className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-sm text-white transition" href={job.source_link} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Posting</a>}
+          {job.drive_folder_url && <a className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 hover:bg-white/20 px-3 py-1.5 text-sm text-white transition" href={job.drive_folder_url} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Drive folder</a>}
           <button className="rounded-lg bg-white/10 hover:bg-white/20 p-2 text-white transition" title="Move to Trash (restorable)" onClick={async () => { if (confirm('Move this job to the Trash?\n\nEverything in it stays saved, and you can restore it anytime from Archive & Trash.')) { await api.del(`jobs/${id}`); nav(`/lanes/${job.lane_id}`); } }}><Trash2 size={14} /></button>
         </div>
       </div>

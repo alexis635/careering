@@ -26,6 +26,8 @@ const STAGES = ['Saved', 'Applied', 'Screening', 'Interviewing', 'Offer', 'Close
 const WRITABLE: Record<string, string> = {
   title: 'role_title', company: 'company', posting_url: 'source_link', fit: 'fit',
   salary: 'salary_range', location: 'location', remote_type: 'remote_type', deadline: 'deadline', posting_text: 'posting_text',
+  // her prep checklist: where the application folder is, and whether it is ready for Alexis to submit (never moves the stage)
+  drive_folder_url: 'drive_folder_url', prep_complete: 'prep_complete',
 };
 const HUMAN_ONLY = ['stage', 'lane_id', 'closed_outcome', 'applied_date', 'type', 'created_by'];
 
@@ -37,6 +39,9 @@ let ready: Promise<void> | null = null;
 export function ensureAgentSchema() {
   ready ??= (async () => {
     await q(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS created_by TEXT NOT NULL DEFAULT 'alexis'`);
+    await q(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS drive_folder_url TEXT NOT NULL DEFAULT ''`);
+    await q(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS prep_complete BOOLEAN NOT NULL DEFAULT false`);
+    await q(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS prep_completed_at TIMESTAMPTZ`);
     await q(`CREATE TABLE IF NOT EXISTS agent_log (
       id SERIAL PRIMARY KEY, at TIMESTAMPTZ NOT NULL DEFAULT now(), agent TEXT NOT NULL,
       method TEXT NOT NULL, path TEXT NOT NULL, status INT NOT NULL, job_id INT,
@@ -126,7 +131,8 @@ export async function enrichJob(id: number): Promise<{ ok: boolean; reason?: str
 // ---- reading jobs in the API shape ----
 const JOB_SELECT = `
   SELECT j.id, j.role_title, j.company, j.source_link, j.stage, j.closed_outcome, j.lane_id, l.name AS lane_name,
-         j.fit, j.salary_range, j.location, j.remote_type, j.type, j.created_by,
+         j.fit, j.salary_range, j.location, j.remote_type, j.type, j.created_by, j.drive_folder_url, j.prep_complete,
+         to_char(j.prep_completed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS prep_completed_at,
          to_char(j.deadline, 'YYYY-MM-DD') AS deadline, to_char(j.applied_date, 'YYYY-MM-DD') AS applied_date,
          to_char(j.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at,
          to_char(j.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS updated_at`;
@@ -139,6 +145,7 @@ function shape(j: any, host: string) {
     lane_id: j.lane_id, lane_name: j.lane_name, fit: j.fit ?? null,
     salary: j.salary_range || null, location: j.location || null, remote_type: j.remote_type || null,
     deadline: j.deadline ?? null, applied_date: j.applied_date ?? null, type: j.type, created_by: j.created_by,
+    drive_folder_url: j.drive_folder_url || null, prep_complete: !!j.prep_complete, prep_completed_at: j.prep_completed_at ?? null,
     created_at: j.created_at, updated_at: j.updated_at, app_url: `https://${host}/jobs/${j.id}`,
     ...(j.posting_text !== undefined ? { posting_text: j.posting_text } : {}),
   };
@@ -222,6 +229,16 @@ async function getJob(id: number, host: string, full = false) {
 
 // "Marketing Lead, Global Brand (Remote)" -> "Marketing Lead", for the resume file name
 const coreTitle = (t: string) => String(t || '').replace(/\([^)]*\)|\[[^\]]*\]/g, ' ').split(/\s*[,|/:]\s*|\s+-\s+/)[0].replace(/\s+/g, ' ').trim() || 'Resume';
+const DOCS = {
+  resume: { kind: 'resume', action: 'tailor', title: 'Tailored resume', noun: 'tailored resume', file: 'Resume', pdf: 'resume', missing: 'no_tailored_resume' },
+  'cover-letter': { kind: 'cover_letter', action: 'cover_letter', title: 'Cover letter', noun: 'cover letter', file: 'Cover Letter', pdf: 'letter', missing: 'no_cover_letter' },
+} as const;
+
+/** AI writer errors as agent errors. 503 ai_busy carries Retry-After so a long batch can pause and pick up again. */
+function aiFail(e: HttpError): Out {
+  if (e.status === 503) return { ...fail(503, 'ai_busy', e.message), headers: { 'Retry-After': '60' } };
+  return fail(e.status, e.status === 400 ? 'not_ready' : e.status === 404 ? 'not_found' : e.status === 409 ? 'conflict' : 'ai_failed', e.message);
+}
 const safeName = (s: string) => s.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
 
 // Every job (trashed included) whose posting URL or company + title matches.
@@ -241,7 +258,9 @@ function validate(body: any): string | null {
   if ('fit' in body && body.fit !== null && !FITS.includes(body.fit)) return 'fit must be strong, moderate, weak, or null';
   if ('deadline' in body && body.deadline !== null && !/^\d{4}-\d{2}-\d{2}$/.test(String(body.deadline))) return 'deadline must be YYYY-MM-DD or null';
   for (const f of ['title', 'company']) if (f in body && (typeof body[f] !== 'string' || !body[f].trim())) return `${f} must be a non-empty string`;
-  for (const [f, v] of Object.entries(body)) if (f in WRITABLE && v !== null && typeof v !== 'string') return `${f} must be a string or null`;
+  if ('prep_complete' in body && typeof body.prep_complete !== 'boolean') return 'prep_complete must be true or false';
+  if ('drive_folder_url' in body && body.drive_folder_url !== null && !/^https:\/\/\S+$/.test(String(body.drive_folder_url).trim())) return 'drive_folder_url must be an https link or null';
+  for (const [f, v] of Object.entries(body)) if (f in WRITABLE && f !== 'prep_complete' && v !== null && typeof v !== 'string') return `${f} must be a string or null`;
   return null;
 }
 const colVal = (f: string, v: any) => (v === null && !['fit', 'deadline'].includes(f) ? '' : typeof v === 'string' ? v.trim() : v);
@@ -291,6 +310,39 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
     return fail(404, 'not_found', 'No such endpoint. See careering.md.');
   }
 
+  // GET /prep: one row per job with where its application prep stands, so a long run can stop and pick up where it left off
+  if (a === 'prep' && !b && r.method === 'GET') {
+    await ensureAdvisorColumns();
+    await outreach.ensureOutreachSchema();
+    const vals: any[] = [];
+    const where: string[] = [`j.type = 'application'`];
+    const st = (r.query.get('stage') || 'saved').toLowerCase();
+    if (st !== 'all') {
+      const stage = STAGES.find((x) => x.toLowerCase() === st);
+      if (!stage) return fail(400, 'invalid_filter', 'stage must be saved, applied, screening, interviewing, offer, closed, or all');
+      vals.push(stage); where.push(`j.stage = $${vals.length}`);
+    }
+    if (r.query.get('lane_id')) { vals.push(Number(r.query.get('lane_id'))); where.push(`j.lane_id = $${vals.length}`); }
+    if (r.query.get('prep_complete') === 'true' || r.query.get('prep_complete') === 'false') { vals.push(r.query.get('prep_complete') === 'true'); where.push(`j.prep_complete = $${vals.length}`); }
+    const rows = await q(
+      `SELECT j.id, j.company, j.role_title, j.stage, j.drive_folder_url, j.prep_complete,
+              length(trim(coalesce(j.posting_text, ''))) > 0 AS has_posting,
+              (length(trim(j.angle)) > 0 OR length(trim(j.advisor_notes)) > 0 OR jsonb_array_length(j.advisor_chat) > 0 OR jsonb_array_length(j.angle_chat) > 0) AS has_advisor_context,
+              (SELECT max(version) FROM job_documents d WHERE d.job_id = j.id AND d.kind = 'resume' AND d.deleted_at IS NULL) AS resume_version,
+              (SELECT max(version) FROM job_documents d WHERE d.job_id = j.id AND d.kind = 'resume' AND d.deleted_at IS NULL AND d.source = 'noelle') AS noelle_resume_version,
+              (SELECT max(version) FROM job_documents d WHERE d.job_id = j.id AND d.kind = 'cover_letter' AND d.deleted_at IS NULL) AS cover_letter_version,
+              (SELECT count(*)::int FROM job_contacts x WHERE x.job_id = j.id AND x.deleted_at IS NULL) AS contacts,
+              (SELECT count(*)::int FROM outreach_drafts o WHERE o.job_id = j.id AND o.deleted_at IS NULL AND o.drafted_by = 'noelle' AND o.status = 'drafted') AS staged_drafts
+         ${JOB_FROM} AND ${where.join(' AND ')} ORDER BY j.prep_complete, j.updated_at DESC, j.id DESC`, vals);
+    const next = (x: any) => x.prep_complete ? 'done' : !x.has_posting ? 'add posting_text' : !x.has_advisor_context ? 'ask Alexis for her why I fit' : !x.noelle_resume_version ? 'generate resume' : !x.drive_folder_url ? 'save files to Drive and set drive_folder_url' : !x.staged_drafts && x.contacts ? 'stage drafts' : 'review and set prep_complete';
+    return ok(rows.map((x: any) => ({
+      id: x.id, company: x.company, title: x.role_title, stage: String(x.stage).toLowerCase(), has_posting: x.has_posting, has_advisor_context: x.has_advisor_context,
+      resume_version: x.resume_version ?? null, noelle_resume_version: x.noelle_resume_version ?? null, cover_letter_version: x.cover_letter_version ?? null,
+      contacts: x.contacts, staged_drafts: x.staged_drafts, drive_folder_url: x.drive_folder_url || null, prep_complete: !!x.prep_complete, next_step: next(x),
+      app_url: `https://${r.host}/jobs/${x.id}`,
+    })));
+  }
+
   if (a !== 'jobs') return fail(404, 'not_found', 'No such endpoint. See CONVENTIONS.md and careering.md.');
 
   // GET /jobs
@@ -307,6 +359,7 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
     }
     if (p.get('fit')) add('j.fit = ?', p.get('fit'));
     if (p.get('created_by')) add('j.created_by = ?', p.get('created_by'));
+    if (p.get('prep_complete') === 'true' || p.get('prep_complete') === 'false') add('j.prep_complete = ?', p.get('prep_complete') === 'true');
     if (p.get('updated_since')) add('j.updated_at > ?::timestamptz', p.get('updated_since'));
     if (p.get('search')) add(`(j.company ILIKE ? OR j.role_title ILIKE $${vals.length + 1})`, `%${p.get('search')}%`);
     if (p.get('posting_url')) {
@@ -375,6 +428,7 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
     const sets: string[] = [];
     const vals: any[] = [];
     for (const [f, col] of Object.entries(WRITABLE)) if (f in body) { vals.push(colVal(f, body[f])); sets.push(`${col} = $${vals.length}`); }
+    if ('prep_complete' in body) sets.push(body.prep_complete ? 'prep_completed_at = now()' : 'prep_completed_at = NULL');
     vals.push(id);
     await q(`UPDATE jobs SET ${sets.join(', ')}, updated_at = now() WHERE id = $${vals.length}`, vals);
     const after = await getJob(id, r.host, true);
@@ -406,6 +460,7 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
       };
     } catch (e: any) {
       if (!(e instanceof HttpError)) throw e;
+      if (e.status === 503) return aiFail(e);
       return fail(e.status, e.status === 404 ? 'no_tailored_resume' : e.status === 400 ? 'invalid_field' : 'ai_failed', e.message);
     }
   }
@@ -417,67 +472,69 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
     return ok({ job_id: id, company: job.company, title: job.title, ...(await advisorView(id)), app_url: `https://${r.host}/jobs/${id}?tab=Advisor` });
   }
 
-  // POST /jobs/:id/resume/generate: Careering's Tailored resume button, run for her. Saved as a NEW version marked Noelle.
-  if (c === 'resume' && r.parts[3] === 'generate' && r.method === 'POST') {
+  // ---- documents: the job's tailored resume and cover letter. Same routes for both: /resume/... and /cover-letter/... ----
+  const DOC = DOCS[c as keyof typeof DOCS];
+
+  // POST /jobs/:id/resume/generate, /jobs/:id/cover-letter/generate: Careering's own writer, run for her. A NEW version marked Noelle.
+  if (DOC && r.parts[3] === 'generate' && !r.parts[4] && r.method === 'POST') {
     const job = await getJob(id, r.host);
     if (!job) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
     const unknown = Object.keys(body).filter((f) => !['instructions', 'resume_id'].includes(f));
-    if (unknown.length) return fail(400, 'unknown_field', `Unknown field(s): ${unknown.join(', ')}. Send optional instructions and resume_id.`);
+    if (unknown.length) return fail(400, 'unknown_field', `Unknown field(s): ${unknown.join(', ')}. Send optional instructions${DOC.kind === 'resume' ? ' and resume_id' : ''}.`);
     const instructions = typeof body.instructions === 'string' ? body.instructions.trim() : '';
     if (instructions.length > 3000) return fail(400, 'too_long', 'Keep instructions under 3,000 characters');
     if ('resume_id' in body && body.resume_id !== null && !Number.isInteger(body.resume_id)) return fail(400, 'invalid_field', 'resume_id must be a whole number');
     try {
-      const doc = await aiRoute('tailor', { job_id: id, instructions: instructions || undefined, resume_id: body.resume_id ?? undefined });
-      const title = `Tailored resume for ${job.company || 'job'}, by Noelle`;
+      const doc = await aiRoute(DOC.action, { job_id: id, instructions: instructions || undefined, resume_id: body.resume_id ?? undefined });
+      const title = `${DOC.title} for ${job.company || 'job'}, by Noelle`;
       await q(`UPDATE job_documents SET source='noelle', title=$2 WHERE id=$1`, [doc.id, title]);
       const brief = await advisorView(id);
       await q(`INSERT INTO job_notes (job_id, body, kind) VALUES ($1,$2,'Noelle')`, [id,
-        `Generated a tailored resume (v${doc.version})${brief.has_context ? ' built around your Advisor notes and angle' : ' (no Advisor notes or angle were set for this job)'}.` +
+        `Generated a ${DOC.noun} (v${doc.version})${brief.has_context ? ' built around your Advisor notes and angle' : ' (no Advisor notes or angle were set for this job)'}.` +
         (instructions ? `\nMy direction: ${instructions}` : '')]);
       return {
-        ...ok({ version: doc.version, document_title: title, text: orderResume(doc.body), used_advisor_context: brief.has_context,
-          pdf_path: `/jobs/${id}/resume/pdf?version=${doc.version}`, app_url: `https://${r.host}/jobs/${id}?tab=Documents` }, 201),
-        audit: { job_id: id, summary: `Generated a tailored resume for ${job.company}, ${job.title} (v${doc.version})` },
+        ...ok({ version: doc.version, document_title: title, text: DOC.kind === 'resume' ? orderResume(doc.body) : doc.body, used_advisor_context: brief.has_context,
+          pdf_path: `/jobs/${id}/${c}/pdf?version=${doc.version}`, app_url: `https://${r.host}/jobs/${id}?tab=Documents` }, 201),
+        audit: { job_id: id, summary: `Generated a ${DOC.noun} for ${job.company}, ${job.title} (v${doc.version})` },
       };
     } catch (e: any) {
       if (!(e instanceof HttpError)) throw e;
-      return fail(e.status, e.status === 400 ? 'not_ready' : e.status === 404 ? 'not_found' : 'ai_failed', e.message);
+      return aiFail(e);
     }
   }
 
-  // GET /jobs/:id/resume/pdf: the one page PDF of a tailored version (newest unless ?version=N). ?format=json for base64.
-  if (c === 'resume' && r.parts[3] === 'pdf' && r.method === 'GET') {
+  // GET /jobs/:id/resume/pdf, /jobs/:id/cover-letter/pdf: the PDF of a version (newest unless ?version=N). ?format=json for base64.
+  if (DOC && r.parts[3] === 'pdf' && !r.parts[4] && r.method === 'GET') {
     const job = await getJob(id, r.host);
     if (!job) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
-    const versions = await q(`SELECT version, body FROM job_documents WHERE job_id=$1 AND kind='resume' AND deleted_at IS NULL ORDER BY version DESC, id DESC`, [id]);
-    if (!versions.length) return fail(404, 'no_tailored_resume', 'No resume has been tailored for this job yet. Generate one with POST /jobs/:id/resume/generate.');
+    const versions = await q(`SELECT version, body FROM job_documents WHERE job_id=$1 AND kind=$2 AND deleted_at IS NULL ORDER BY version DESC, id DESC`, [id, DOC.kind]);
+    if (!versions.length) return fail(404, DOC.missing, `No ${DOC.noun} for this job yet. Make one with POST /jobs/${id}/${c}/generate.`);
     const want = r.query.get('version');
     const doc = want ? versions.find((v: any) => String(v.version) === want) : versions[0];
     if (!doc) return fail(404, 'not_found', `No version ${want}. Versions: ${versions.map((v: any) => v.version).join(', ')}`);
-    const text = orderResume(doc.body);
-    const who = safeName(text.split('\n')[0] || '') || 'Alexis Granville';
-    const filename = `${safeName((r.query.get('filename') || '').replace(/\.pdf$/i, '')) || `${who} - Resume - ${safeName(coreTitle(job.title))}`}.pdf`;
-    const { resumePdf } = await import('./pdf.js');
-    const pdf = await resumePdf(text);
-    const meta = { 'X-Resume-Version': String(doc.version), 'X-Resume-Pages': String(pdf.pages) };
+    const text = DOC.kind === 'resume' ? orderResume(doc.body) : doc.body;
+    // her naming rule for application files: "Alexis Granville - Resume - Marketing Lead.pdf"
+    const filename = `${safeName((r.query.get('filename') || '').replace(/\.pdf$/i, '')) || `Alexis Granville - ${DOC.file} - ${safeName(coreTitle(job.title))}`}.pdf`;
+    const { documentPdf } = await import('./pdf.js');
+    const pdf = await documentPdf(DOC.pdf, text);
     if (r.query.get('format') === 'json') return ok({ job_id: id, version: doc.version, filename, mime: 'application/pdf', pages: pdf.pages, base64: pdf.bytes.toString('base64') });
-    return { json: null, headers: meta, file: { name: filename, mime: 'application/pdf', data: pdf.bytes } };
+    return { json: null, headers: { 'X-Document-Version': String(doc.version), 'X-Document-Pages': String(pdf.pages) }, file: { name: filename, mime: 'application/pdf', data: pdf.bytes } };
   }
 
-  // GET /jobs/:id/resume: the resume tailored for this job (newest version unless ?version=N), read only
-  if (c === 'resume' && r.method === 'GET' && !r.parts[3]) {
+  // GET /jobs/:id/resume, /jobs/:id/cover-letter: the text of a version (newest unless ?version=N), read only
+  if (DOC && r.method === 'GET' && !r.parts[3]) {
     const job = await getJob(id, r.host);
     if (!job) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
     const versions = await q(
       `SELECT id, version, title, source, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at, body
-         FROM job_documents WHERE job_id=$1 AND kind='resume' AND deleted_at IS NULL ORDER BY version DESC, id DESC`, [id]);
-    if (!versions.length) return fail(404, 'no_tailored_resume', 'No resume has been tailored for this job yet. Alexis makes one on the job\'s Resume and letters tab.');
+         FROM job_documents WHERE job_id=$1 AND kind=$2 AND deleted_at IS NULL ORDER BY version DESC, id DESC`, [id, DOC.kind]);
+    if (!versions.length) return fail(404, DOC.missing, `No ${DOC.noun} for this job yet. Make one with POST /jobs/${id}/${c}/generate, or Alexis makes one on the job's Resume and letters tab.`);
     const want = r.query.get('version');
     const doc = want ? versions.find((v: any) => String(v.version) === want) : versions[0];
     if (!doc) return fail(404, 'not_found', `No version ${want}. Versions: ${versions.map((v: any) => v.version).join(', ')}`);
     return ok({
       job_id: id, company: job.company, title: job.title, version: doc.version, document_title: doc.title, created_at: doc.created_at,
-      by: doc.source === 'noelle' ? 'noelle' : 'alexis', text: orderResume(doc.body), versions: versions.map(({ body, source, ...v }: any) => ({ ...v, by: source === 'noelle' ? 'noelle' : 'alexis' })), app_url: `https://${r.host}/jobs/${id}?tab=Documents`,
+      by: doc.source === 'noelle' ? 'noelle' : 'alexis', text: DOC.kind === 'resume' ? orderResume(doc.body) : doc.body, versions: versions.map(({ body, source, ...v }: any) => ({ ...v, by: source === 'noelle' ? 'noelle' : 'alexis' })), app_url: `https://${r.host}/jobs/${id}?tab=Documents`,
     });
   }
 
@@ -563,7 +620,25 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
       return { ...ok(outreachView(d, r.host), 201), audit: { job_id: id, summary: `Staged an outreach draft to ${d.to_name || 'a contact'} for ${job.company}, ${job.title} (not sent; waiting for Alexis)`, after: { id: d.id, to: d.to_email, subject: d.subject } } };
     } catch (e: any) {
       if (!(e instanceof HttpError)) throw e;
-      return fail(e.status, e.status === 404 ? 'not_found' : e.status === 409 ? 'duplicate' : 'ai_failed', e.message);
+      if (e.status === 409) return fail(409, 'duplicate', e.message);
+      return aiFail(e);
+    }
+  }
+  // PATCH /jobs/:id/outreach/drafts/:draft_id: fix the subject or body of a draft she staged, while it is still 'drafted'
+  if (c === 'outreach' && r.parts[3] === 'drafts' && r.parts[4] && !r.parts[5] && r.method === 'PATCH') {
+    const did = Number(r.parts[4]);
+    if (!Number.isInteger(did)) return fail(404, 'not_found', 'Draft id must be a number');
+    const unknown = Object.keys(body).filter((f) => !['subject', 'body'].includes(f));
+    if (unknown.length) return fail(400, 'unknown_field', `Unknown field(s): ${unknown.join(', ')}. You can change subject and body.`);
+    if (!('subject' in body) && !('body' in body)) return fail(400, 'empty_update', 'Send subject, body, or both');
+    for (const f of ['subject', 'body']) if (f in body && typeof body[f] !== 'string') return fail(400, 'invalid_field', `${f} must be a string`);
+    if (typeof body.body === 'string' && body.body.length > 10000) return fail(400, 'too_long', 'Keep the body under 10,000 characters');
+    try {
+      const d = await outreach.editStagedDraft(id, did, body);
+      return { ...ok(outreachView(d, r.host)), audit: { job_id: id, summary: `Edited staged draft ${did} to ${d.to_name || 'a contact'} (still waiting for Alexis)`, after: { id: d.id, subject: d.subject } } };
+    } catch (e: any) {
+      if (!(e instanceof HttpError)) throw e;
+      return fail(e.status, e.status === 403 ? 'not_yours' : e.status === 409 ? 'not_editable' : e.status === 404 ? 'not_found' : 'invalid_field', e.message);
     }
   }
   if (c === 'outreach' && r.parts[3] === 'start' && r.method === 'POST') {
@@ -639,9 +714,11 @@ export async function handleAgent(r: Req): Promise<Out> {
     res = await route(r, body);
   } catch (e: any) {
     console.error('agent route failed', e);
-    res = /invalid input syntax|out of range/i.test(e?.message || '')
+    const reason = String(e?.message || e || 'unknown').slice(0, 300);
+    // the reason goes back to her and into the activity log, so a failure can be traced without server logs
+    res = /invalid input syntax|out of range/i.test(reason)
       ? fail(400, 'invalid_field', 'A value was not valid (check dates and numbers)')
-      : fail(500, 'server_error', 'Something went wrong on the server');
+      : { ...fail(500, 'server_error', 'Something went wrong on the server', { reason }), audit: { summary: `Server error: ${reason}` } };
   }
   const { audit, ...out } = res;
   const status = out.status ?? 200;

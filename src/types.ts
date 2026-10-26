@@ -23,6 +23,7 @@ export interface Job {
   fit: 'strong' | 'moderate' | 'weak' | null;
   angle: string; angle_focus: AngleFocus; angle_chat: AngleMsg[]; angle_check: string;
   advisor_chat?: AdvisorMsg[]; advisor_notes?: string; advisor_tone?: string;
+  drive_folder_url?: string; prep_complete?: boolean; prep_completed_at?: string | null;
   positioning?: Positioning | null; tools?: { name: string; used: boolean | null }[];
   posting_parsed: { summary?: string; requirements?: string[]; nice_to_haves?: string[]; keywords?: string[] } | null;
 }
