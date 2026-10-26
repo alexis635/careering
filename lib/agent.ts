@@ -9,6 +9,7 @@ import { q } from './db.js';
 import { deepNoDash } from '../src/lib/noDash.js';
 import { waitUntil } from '@vercel/functions';
 import { aiRoute, parseJob, reviseResume } from './ai-routes.js';
+import { ensurePositioningColumns } from './positioning.js';
 import { fetchPosting } from './posting.js';
 import { resolveLogo } from './logo.js';
 import { HttpError, loadJob } from './ai.js';
@@ -213,6 +214,28 @@ async function advisorView(id: number) {
   return { ...view, has_context: !!(view.why_i_fit || view.advisor_notes || view.tone || view.lead_with.roles.length || view.lead_with.wins.length || view.alexis_said.length) };
 }
 
+/**
+ * The job's Overview tab as Alexis sees it: the parsed posting, Careering's match notes and positioning,
+ * the tools question list with her answers, the honest read of her angle, and the contact she noted.
+ */
+async function overviewView(id: number) {
+  await ensurePositioningColumns();
+  const j = (await q(`SELECT posting_parsed, match_notes, positioning, tools, angle_check, resume_version_id, contact_person, contact_notes, interview_prep FROM jobs WHERE id=$1`, [id]))[0] || {};
+  const parsed = j.posting_parsed || {};
+  const pos = j.positioning || null;
+  return {
+    analyzed: !!j.posting_parsed,
+    summary: parsed.summary || null, requirements: parsed.requirements || [], nice_to_haves: parsed.nice_to_haves || [], keywords: parsed.keywords || [],
+    match_notes: String(j.match_notes || '').trim() || null,
+    positioning: pos && { headline: pos.headline || null, summary: pos.summary || null, reach: pos.reach || null, reach_reason: pos.reach_reason || null, real_posting: pos.real_posting ?? null, rated_at: pos.rated_at || null },
+    tools: (Array.isArray(j.tools) ? j.tools : []).map((t: any) => ({ name: t.name, alexis_used_it: t.used ?? null })),
+    angle_read: String(j.angle_check || '').trim() || null,
+    suggested_resume_id: j.resume_version_id ?? null,
+    contact_person: String(j.contact_person || '').trim() || null, contact_notes: String(j.contact_notes || '').trim() || null,
+    interview_notes: String(j.interview_prep || '').trim() || null,
+  };
+}
+
 async function getJob(id: number, host: string, full = false) {
   const row = (await q(`${JOB_SELECT}${full ? ', j.posting_text' : ''} ${JOB_FROM} AND j.id = $1`, [id]))[0];
   if (!row) return null;
@@ -223,6 +246,9 @@ async function getJob(id: number, host: string, full = false) {
          FROM job_notes WHERE job_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC`, [id]);
     job.notes = notes.map((n: any) => ({ ...n, by: noteBy(n.author) }));
     job.advisor = await advisorView(id);
+    job.overview = await overviewView(id);
+    job.next_actions = (await q(`SELECT id, text, done, to_char(due_date, 'YYYY-MM-DD') AS due_date FROM job_actions WHERE job_id=$1 AND deleted_at IS NULL ORDER BY done, due_date NULLS LAST, id`, [id]))
+      .map((x: any) => ({ id: x.id, text: x.text, done: !!x.done, due_date: x.due_date ?? null }));
   }
   return job;
 }
@@ -232,6 +258,8 @@ const coreTitle = (t: string) => String(t || '').replace(/\([^)]*\)|\[[^\]]*\]/g
 const DOCS = {
   resume: { kind: 'resume', action: 'tailor', title: 'Tailored resume', noun: 'tailored resume', file: 'Resume', pdf: 'resume', missing: 'no_tailored_resume' },
   'cover-letter': { kind: 'cover_letter', action: 'cover_letter', title: 'Cover letter', noun: 'cover letter', file: 'Cover Letter', pdf: 'letter', missing: 'no_cover_letter' },
+  'interview-prep': { kind: 'interview_prep', action: 'prep', title: 'Interview prep', noun: 'interview prep sheet', file: 'Interview Prep', pdf: null, missing: 'no_interview_prep' },
+  portfolio: { kind: 'portfolio_concept', action: 'portfolio', title: 'Portfolio concept', noun: 'portfolio concept', file: 'Portfolio Concept', pdf: null, missing: 'no_portfolio_concept' },
 } as const;
 
 /** AI writer errors as agent errors. 503 ai_busy carries Retry-After so a long batch can pause and pick up again. */
@@ -310,6 +338,24 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
     return fail(404, 'not_found', 'No such endpoint. See careering.md.');
   }
 
+  // GET /library: the record every writer draws on (resume masters, bullet bank, bios, snippets, wins, story bank, roles).
+  // Pay and compensation are left out. Read only.
+  if (a === 'library' && !b && r.method === 'GET') {
+    const [items, wins, stories, roles] = await Promise.all([
+      q(`SELECT id, kind, title, body, tags FROM library_items WHERE deleted_at IS NULL AND NOT ('archived' = ANY(tags)) ORDER BY kind, id`),
+      q(`SELECT id, title, to_char(happened_on, 'YYYY-MM') AS happened, employer, role, description, impact, category FROM wins WHERE deleted_at IS NULL ORDER BY happened_on DESC NULLS LAST, id DESC`),
+      q(`SELECT id, title, body, employer, job_id FROM stories WHERE deleted_at IS NULL ORDER BY updated_at DESC`),
+      q(`SELECT id, employer, title, to_char(start_date, 'YYYY-MM') AS start, to_char(end_date, 'YYYY-MM') AS "end", notes FROM roles WHERE deleted_at IS NULL ORDER BY start_date DESC NULLS LAST`),
+    ]);
+    const of = (k: string) => items.filter((i: any) => i.kind === k && !(i.tags || []).includes('generated')).map((i: any) => ({ id: i.id, title: i.title, tags: i.tags || [], text: i.body }));
+    return ok({
+      resume_versions: of('resume'), bullet_bank: of('bullet'), bios: of('bio'), snippets: of('snippet'),
+      wins: wins.map((w: any) => ({ id: w.id, title: w.title, happened: w.happened ?? null, employer: w.employer || null, role: w.role || null, description: w.description, impact: w.impact || null, category: w.category })),
+      story_bank: stories.map((x: any) => ({ id: x.id, title: x.title, employer: x.employer || null, job_id: x.job_id ?? null, text: x.body })),
+      roles: roles.map((x: any) => ({ id: x.id, employer: x.employer, title: x.title || null, start: x.start ?? null, end: x.end ?? null, notes: x.notes || null })),
+    });
+  }
+
   // GET /prep: one row per job with where its application prep stands, so a long run can stop and pick up where it left off
   if (a === 'prep' && !b && r.method === 'GET') {
     await ensureAdvisorColumns();
@@ -334,7 +380,7 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
               (SELECT count(*)::int FROM job_contacts x WHERE x.job_id = j.id AND x.deleted_at IS NULL) AS contacts,
               (SELECT count(*)::int FROM outreach_drafts o WHERE o.job_id = j.id AND o.deleted_at IS NULL AND o.drafted_by = 'noelle' AND o.status = 'drafted') AS staged_drafts
          ${JOB_FROM} AND ${where.join(' AND ')} ORDER BY j.prep_complete, j.updated_at DESC, j.id DESC`, vals);
-    const next = (x: any) => x.prep_complete ? 'done' : !x.has_posting ? 'add posting_text' : !x.has_advisor_context ? 'ask Alexis for her why I fit' : !x.noelle_resume_version ? 'generate resume' : !x.drive_folder_url ? 'save files to Drive and set drive_folder_url' : !x.staged_drafts && x.contacts ? 'stage drafts' : 'review and set prep_complete';
+    const next = (x: any) => x.prep_complete ? 'done' : !x.has_posting ? 'add posting_text' : !x.noelle_resume_version ? 'generate resume' : !x.drive_folder_url ? 'save files to Drive and set drive_folder_url' : !x.staged_drafts && x.contacts ? 'stage drafts' : 'review and set prep_complete';
     return ok(rows.map((x: any) => ({
       id: x.id, company: x.company, title: x.role_title, stage: String(x.stage).toLowerCase(), has_posting: x.has_posting, has_advisor_context: x.has_advisor_context,
       resume_version: x.resume_version ?? null, noelle_resume_version: x.noelle_resume_version ?? null, cover_letter_version: x.cover_letter_version ?? null,
@@ -472,6 +518,47 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
     return ok({ job_id: id, company: job.company, title: job.title, ...(await advisorView(id)), app_url: `https://${r.host}/jobs/${id}?tab=Advisor` });
   }
 
+  // GET /jobs/:id/documents: every draft on the Resume and letters tab, newest first (?kind=resume|cover_letter|outreach|interview_prep|portfolio_concept|other)
+  if (c === 'documents' && !r.parts[3] && r.method === 'GET') {
+    const job = await getJob(id, r.host);
+    if (!job) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
+    const kind = r.query.get('kind');
+    const docs = await q(
+      `SELECT id, kind, version, title, source, body, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at
+         FROM job_documents WHERE job_id=$1 AND deleted_at IS NULL ${kind ? 'AND kind=$2' : ''} ORDER BY created_at DESC, id DESC`, kind ? [id, kind] : [id]);
+    return ok(docs.map((d: any) => ({ id: d.id, kind: d.kind, version: d.version, title: d.title, by: d.source === 'noelle' ? 'noelle' : 'alexis', created_at: d.created_at, text: d.kind === 'resume' ? orderResume(d.body) : d.body })));
+  }
+
+  // GET /jobs/:id/emails: the job's Emails tab (sent and received), newest first, read only
+  if (c === 'emails' && !r.parts[3] && r.method === 'GET') {
+    const job = await getJob(id, r.host);
+    if (!job) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
+    const rows = await q(`SELECT id, direction, from_addr, to_addr, subject, body, attachments, to_char(sent_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS sent_at FROM job_emails WHERE job_id=$1 ORDER BY sent_at DESC`, [id]);
+    return ok(rows.map((m: any) => ({ id: m.id, direction: m.direction, from: m.from_addr, to: m.to_addr, subject: m.subject, body: m.body, attachments: m.attachments ?? [], sent_at: m.sent_at })));
+  }
+
+  // POST /jobs/:id/analyze: the Overview tab's "Analyze this job" button. Reads the link if there is no posting text,
+  // parses the posting, maps her record to it, and rates the fit as positioned. Returns the fresh overview.
+  if (c === 'analyze' && !r.parts[3] && r.method === 'POST') {
+    const job = await getJob(id, r.host, true);
+    if (!job) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
+    try {
+      let row = await loadJob(id);
+      if (!String(row.posting_text || '').trim()) {
+        if (!row.source_link) return fail(400, 'not_ready', 'This job has no posting text or link. PATCH posting_text first.');
+        try { row = (await q(`UPDATE jobs SET posting_text=$1, updated_at=now() WHERE id=$2 RETURNING *`, [await fetchPosting(row.source_link), id]))[0]; }
+        catch (e: any) { return fail(400, 'not_ready', `Careering could not read the posting link (${e?.message || 'blocked'}). PATCH posting_text with the posting, then analyze again.`); }
+      }
+      await parseJob(row, row.posting_text);
+      await aiRoute('match', { job_id: id });
+      const after = await getJob(id, r.host, true);
+      return { ...ok({ fit: after.fit, overview: after.overview }), audit: { job_id: id, summary: `Analyzed ${after.company}, ${after.title} (fit: ${after.fit || 'not rated'})` } };
+    } catch (e: any) {
+      if (!(e instanceof HttpError)) throw e;
+      return aiFail(e);
+    }
+  }
+
   // ---- documents: the job's tailored resume and cover letter. Same routes for both: /resume/... and /cover-letter/... ----
   const DOC = DOCS[c as keyof typeof DOCS];
 
@@ -505,6 +592,7 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
 
   // GET /jobs/:id/resume/pdf, /jobs/:id/cover-letter/pdf: the PDF of a version (newest unless ?version=N). ?format=json for base64.
   if (DOC && r.parts[3] === 'pdf' && !r.parts[4] && r.method === 'GET') {
+    if (!DOC.pdf) return fail(404, 'no_pdf', `There is no PDF for the ${DOC.noun}. Read the text with GET /jobs/${id}/${c}.`);
     const job = await getJob(id, r.host);
     if (!job) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
     const versions = await q(`SELECT version, body FROM job_documents WHERE job_id=$1 AND kind=$2 AND deleted_at IS NULL ORDER BY version DESC, id DESC`, [id, DOC.kind]);
