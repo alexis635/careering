@@ -1,7 +1,8 @@
 // Agent API for Noelle (Muse). Lives under /api/agent/v1 and is the ONLY way her key gets in.
 // Shared rules (auth, envelope, idempotency, allowlists, audit) are in noelle-api/CONVENTIONS.md.
-// She can add jobs to the Saved stage, fix their details, and leave notes. Stage, lane moves,
-// outcomes, and deletes are Alexis only, so her key is refused on those fields instead of ignoring them.
+// She can add jobs to the Saved stage, fix their details, leave notes, and move inactive Saved jobs to
+// the Trash. Stage, lane moves, outcomes, and other deletes are Alexis only, so her key is refused on those
+// fields instead of ignoring them.
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { q } from './db.js';
 import { deepNoDash } from '../src/lib/noDash.js';
@@ -290,7 +291,7 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
     if (!lane) return fail(400, 'lane_required', 'lane_id must be one of the active lanes. Pick the closest fit by name.', { lanes });
 
     const { byUrl, byName } = await findDuplicates(body);
-    if (byUrl) return fail(409, 'duplicate', byUrl.in_trash ? 'This posting is already in Careering (Alexis moved it to the Trash). Do not re-add it.' : 'This posting is already in Careering.', { existing: dupView(byUrl) });
+    if (byUrl) return fail(409, 'duplicate', byUrl.in_trash ? 'This posting is already in Careering (it is in the Trash). Do not re-add it.' : 'This posting is already in Careering.', { existing: dupView(byUrl) });
     if (byName.length && body.confirm_new !== true) {
       return fail(409, 'possible_duplicate', 'A job with the same company and title exists. If it is truly a different posting, resend with "confirm_new": true.', { existing: byName.map(dupView) });
     }
@@ -470,7 +471,20 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
     return { ...ok(note, 201), audit: { job_id: id, summary: `Added a note to ${job.company}, ${job.title}`, after: note } };
   }
 
-  if (r.method === 'DELETE') return fail(403, 'not_allowed', 'Only Alexis can delete. If something is a duplicate, add a note saying so.');
+  // DELETE /jobs/:id: her audit clears out postings that went inactive. Saved jobs only, and only to
+  // the Trash (the same soft delete Alexis's button does), so Alexis can restore anything from there.
+  if (!c && r.method === 'DELETE') {
+    const unknown = Object.keys(body).filter((f) => f !== 'reason');
+    if (unknown.length) return fail(400, 'unknown_field', `Unknown field(s): ${unknown.join(', ')}. Send an optional reason.`);
+    const reason = typeof body.reason === 'string' ? body.reason.trim().slice(0, 1000) : '';
+    const job = await getJob(id, r.host, true);
+    if (!job) return fail(404, 'not_found', 'No job with that id (or it is already in the Trash)');
+    if (job.stage !== 'saved') return fail(403, 'not_saved', 'You can only delete jobs still in Saved. Alexis has acted on this one; add a note saying the posting is inactive instead.');
+    await q(`INSERT INTO job_notes (job_id, body, kind) VALUES ($1,$2,'Noelle')`, [id, `Moved to the Trash during my audit${reason ? `: ${reason}` : '.'}`]);
+    await q(`UPDATE jobs SET deleted_at = now() WHERE id=$1`, [id]);
+    return { ...ok({ id, trashed: true, reason: reason || null }), audit: { job_id: id, summary: `Moved ${job.company}, ${job.title} to the Trash${reason ? `: ${reason}` : ''}`, before: job } };
+  }
+  if (r.method === 'DELETE') return fail(403, 'not_allowed', 'Only Alexis can delete notes, contacts, and documents. Add a note to the job instead.');
   return fail(405, 'method_not_allowed', `${r.method} is not supported here`);
 }
 
@@ -485,7 +499,7 @@ export async function handleAgent(r: Req): Promise<Out> {
   }
   await ensureAgentSchema();
 
-  const writes = r.method === 'POST' || r.method === 'PATCH';
+  const writes = r.method === 'POST' || r.method === 'PATCH' || r.method === 'DELETE';
   const path = '/' + r.parts.join('/');
   const idem = writes ? String(r.headers['idempotency-key'] || '').trim().slice(0, 200) : '';
   if (idem) {
