@@ -1,8 +1,9 @@
 // Agent API for Noelle (Muse). Lives under /api/agent/v1 and is the ONLY way her key gets in.
 // Shared rules (auth, envelope, idempotency, allowlists, audit) are in noelle-api/CONVENTIONS.md.
 // She can add jobs to the Saved stage, fix their details, leave notes, and move inactive Saved jobs to
-// the Trash. Stage, lane moves, outcomes, and other deletes are Alexis only, so her key is refused on those
-// fields instead of ignoring them.
+// the Trash. She reads Alexis's Advisor notes, generates tailored resumes (and their PDFs), and stages
+// outreach drafts for Alexis to review. Stage, lane moves, outcomes, approving drafts, and other deletes are
+// Alexis only, so her key is refused on those fields instead of ignoring them.
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { q } from './db.js';
 import { deepNoDash } from '../src/lib/noDash.js';
@@ -11,10 +12,11 @@ import { aiRoute, parseJob, reviseResume } from './ai-routes.js';
 import { fetchPosting } from './posting.js';
 import { resolveLogo } from './logo.js';
 import { HttpError, loadJob } from './ai.js';
+import { ensureAdvisorColumns } from './advisor.js';
 import * as outreach from './outreach.js';
 import { orderResume } from '../src/lib/resumeOrder.js';
 
-type Out = { status?: number; json: any; headers?: Record<string, string> };
+type Out = { status?: number; json: any; headers?: Record<string, string>; file?: { name: string; mime: string; data: Buffer } };
 type Req = { method: string; parts: string[]; query: URLSearchParams; headers: Record<string, any>; host: string; ip: string; readBody: () => Promise<any> };
 
 const AGENT = 'noelle';
@@ -144,7 +146,8 @@ function shape(j: any, host: string) {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // The seat word goes first in the notes, the same way Find people writes it, so outreach knows who is who.
-const SEATS: Record<string, string> = { hiring_manager: 'Hiring manager', hr: 'HR / recruiting', department_lead: 'Department lead', vp: 'VP of the department', ceo: 'CEO', other: 'Other' };
+// `connection` is someone she knows through Dillard, AKA, T.Howard, or similar; outreach never picks them for a seat on its own.
+const SEATS: Record<string, string> = { hiring_manager: 'Hiring manager', hr: 'HR / recruiting', department_lead: 'Department lead', vp: 'VP of the department', ceo: 'CEO', connection: 'Personal connection', other: 'Other' };
 function contactView(x: any) {
   const seat = Object.entries(SEATS).find(([, label]) => String(x.notes || '').startsWith(label))?.[0] ?? null;
   return { id: x.id, name: x.name, title: x.title || null, email: x.email || null, seat, added_by: x.source === 'noelle' ? 'noelle' : 'alexis', notes: x.notes || null };
@@ -165,9 +168,42 @@ function outreachView(d: any, host: string) {
     id: d.id, job_id: d.job_id, company: d.company ?? undefined, title: d.role_title ?? undefined,
     recipient: d.recipient, to_name: d.to_name, to_title: d.to_title, to_email: d.to_email || null,
     subject: d.subject, body: d.body, attachments: d.attachment_names ?? [], status: d.status, ready_to_send: (d.status === 'approved' || d.status === 'failed') && !!d.approval_valid,
+    drafted_by: d.drafted_by === 'noelle' ? 'noelle' : 'careering', sent: d.status === 'sent' || !!d.sent_at,
     approved_at: d.approved_at, sent_at: d.sent_at, sent_by: d.sent_by, error: d.error || null, replied: !!d.replied,
     app_url: `https://${host}/jobs/${d.job_id}?tab=Outreach`,
   };
+}
+
+// Notes Log kinds: 'Noelle' is hers, 'Careering' is the app's own, everything else Alexis wrote.
+const noteBy = (kind: string) => (kind === 'Noelle' ? 'noelle' : kind === 'Careering' ? 'careering' : 'alexis');
+
+/**
+ * What Alexis told Careering about why she fits, from the job's Advisor tab: her angle, the notes the advisor
+ * keeps, her tone, the experience she picked to lead with, and every message she typed to the advisor.
+ * The resume and email writers already read all of this; this is the same material for Noelle.
+ */
+async function advisorView(id: number) {
+  await ensureAdvisorColumns();
+  const a = (await q(`SELECT angle, angle_focus, angle_chat, advisor_notes, advisor_tone, advisor_chat FROM jobs WHERE id=$1`, [id]))[0] || {};
+  const focus = a.angle_focus || {};
+  const roleIds: number[] = (focus.roles || []).map((x: any) => Number(x.id));
+  const winIds: number[] = (focus.wins || []).map(Number);
+  const [roles, wins] = await Promise.all([
+    roleIds.length ? q(`SELECT id, employer, title FROM roles WHERE id = ANY($1) AND deleted_at IS NULL`, [roleIds]) : [],
+    winIds.length ? q(`SELECT id, title FROM wins WHERE id = ANY($1) AND deleted_at IS NULL`, [winIds]) : [],
+  ]);
+  const said = (chat: any, where: string) => (Array.isArray(chat) ? chat : []).filter((m: any) => m?.role === 'user' && String(m.text || '').trim()).map((m: any) => ({ where, text: String(m.text) }));
+  const view = {
+    why_i_fit: String(a.angle || '').trim() || null,
+    advisor_notes: String(a.advisor_notes || '').trim() || null,
+    tone: String(a.advisor_tone || '').trim() || null,
+    lead_with: {
+      roles: roleIds.map((rid) => roles.find((x: any) => x.id === rid)).filter(Boolean).map((x: any) => ({ employer: x.employer, title: x.title || null, note: String((focus.roles || []).find((f: any) => Number(f.id) === x.id)?.note || '').trim() || null })),
+      wins: winIds.map((wid) => wins.find((x: any) => x.id === wid)).filter(Boolean).map((x: any) => x.title),
+    },
+    alexis_said: [...said(a.angle_chat, 'angle_chat'), ...said(a.advisor_chat, 'advisor_chat')],
+  };
+  return { ...view, has_context: !!(view.why_i_fit || view.advisor_notes || view.tone || view.lead_with.roles.length || view.lead_with.wins.length || view.alexis_said.length) };
 }
 
 async function getJob(id: number, host: string, full = false) {
@@ -175,12 +211,18 @@ async function getJob(id: number, host: string, full = false) {
   if (!row) return null;
   const job: any = shape(row, host);
   if (full) {
-    job.notes = await q(
+    const notes = await q(
       `SELECT id, kind AS author, body, to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS created_at
          FROM job_notes WHERE job_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC`, [id]);
+    job.notes = notes.map((n: any) => ({ ...n, by: noteBy(n.author) }));
+    job.advisor = await advisorView(id);
   }
   return job;
 }
+
+// "Marketing Lead, Global Brand (Remote)" -> "Marketing Lead", for the resume file name
+const coreTitle = (t: string) => String(t || '').replace(/\([^)]*\)|\[[^\]]*\]/g, ' ').split(/\s*[,|/:]\s*|\s+-\s+/)[0].replace(/\s+/g, ' ').trim() || 'Resume';
+const safeName = (s: string) => s.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
 
 // Every job (trashed included) whose posting URL or company + title matches.
 async function findDuplicates(b: { posting_url?: string; company?: string; title?: string }, exceptId?: number) {
@@ -368,6 +410,60 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
     }
   }
 
+  // GET /jobs/:id/advisor: Alexis's why I fit material from the Advisor tab (also in GET /jobs/:id as `advisor`)
+  if (c === 'advisor' && r.method === 'GET' && !r.parts[3]) {
+    const job = await getJob(id, r.host);
+    if (!job) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
+    return ok({ job_id: id, company: job.company, title: job.title, ...(await advisorView(id)), app_url: `https://${r.host}/jobs/${id}?tab=Advisor` });
+  }
+
+  // POST /jobs/:id/resume/generate: Careering's Tailored resume button, run for her. Saved as a NEW version marked Noelle.
+  if (c === 'resume' && r.parts[3] === 'generate' && r.method === 'POST') {
+    const job = await getJob(id, r.host);
+    if (!job) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
+    const unknown = Object.keys(body).filter((f) => !['instructions', 'resume_id'].includes(f));
+    if (unknown.length) return fail(400, 'unknown_field', `Unknown field(s): ${unknown.join(', ')}. Send optional instructions and resume_id.`);
+    const instructions = typeof body.instructions === 'string' ? body.instructions.trim() : '';
+    if (instructions.length > 3000) return fail(400, 'too_long', 'Keep instructions under 3,000 characters');
+    if ('resume_id' in body && body.resume_id !== null && !Number.isInteger(body.resume_id)) return fail(400, 'invalid_field', 'resume_id must be a whole number');
+    try {
+      const doc = await aiRoute('tailor', { job_id: id, instructions: instructions || undefined, resume_id: body.resume_id ?? undefined });
+      const title = `Tailored resume for ${job.company || 'job'}, by Noelle`;
+      await q(`UPDATE job_documents SET source='noelle', title=$2 WHERE id=$1`, [doc.id, title]);
+      const brief = await advisorView(id);
+      await q(`INSERT INTO job_notes (job_id, body, kind) VALUES ($1,$2,'Noelle')`, [id,
+        `Generated a tailored resume (v${doc.version})${brief.has_context ? ' built around your Advisor notes and angle' : ' (no Advisor notes or angle were set for this job)'}.` +
+        (instructions ? `\nMy direction: ${instructions}` : '')]);
+      return {
+        ...ok({ version: doc.version, document_title: title, text: orderResume(doc.body), used_advisor_context: brief.has_context,
+          pdf_path: `/jobs/${id}/resume/pdf?version=${doc.version}`, app_url: `https://${r.host}/jobs/${id}?tab=Documents` }, 201),
+        audit: { job_id: id, summary: `Generated a tailored resume for ${job.company}, ${job.title} (v${doc.version})` },
+      };
+    } catch (e: any) {
+      if (!(e instanceof HttpError)) throw e;
+      return fail(e.status, e.status === 400 ? 'not_ready' : e.status === 404 ? 'not_found' : 'ai_failed', e.message);
+    }
+  }
+
+  // GET /jobs/:id/resume/pdf: the one page PDF of a tailored version (newest unless ?version=N). ?format=json for base64.
+  if (c === 'resume' && r.parts[3] === 'pdf' && r.method === 'GET') {
+    const job = await getJob(id, r.host);
+    if (!job) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
+    const versions = await q(`SELECT version, body FROM job_documents WHERE job_id=$1 AND kind='resume' AND deleted_at IS NULL ORDER BY version DESC, id DESC`, [id]);
+    if (!versions.length) return fail(404, 'no_tailored_resume', 'No resume has been tailored for this job yet. Generate one with POST /jobs/:id/resume/generate.');
+    const want = r.query.get('version');
+    const doc = want ? versions.find((v: any) => String(v.version) === want) : versions[0];
+    if (!doc) return fail(404, 'not_found', `No version ${want}. Versions: ${versions.map((v: any) => v.version).join(', ')}`);
+    const text = orderResume(doc.body);
+    const who = safeName(text.split('\n')[0] || '') || 'Alexis Granville';
+    const filename = `${safeName((r.query.get('filename') || '').replace(/\.pdf$/i, '')) || `${who} - Resume - ${safeName(coreTitle(job.title))}`}.pdf`;
+    const { resumePdf } = await import('./pdf.js');
+    const pdf = await resumePdf(text);
+    const meta = { 'X-Resume-Version': String(doc.version), 'X-Resume-Pages': String(pdf.pages) };
+    if (r.query.get('format') === 'json') return ok({ job_id: id, version: doc.version, filename, mime: 'application/pdf', pages: pdf.pages, base64: pdf.bytes.toString('base64') });
+    return { json: null, headers: meta, file: { name: filename, mime: 'application/pdf', data: pdf.bytes } };
+  }
+
   // GET /jobs/:id/resume: the resume tailored for this job (newest version unless ?version=N), read only
   if (c === 'resume' && r.method === 'GET' && !r.parts[3]) {
     const job = await getJob(id, r.host);
@@ -430,7 +526,7 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
       if (typeof body.title === 'string' && (mine || !before.title)) set('title', body.title.trim());
       if (mine && typeof body.name === 'string' && body.name.trim()) set('name', body.name.trim());
       const addNotes = [mine && body.seat ? SEATS[body.seat] : '', emailNote, body.note ? String(body.note).trim().slice(0, 500) : ''].filter(Boolean).join('. ');
-      if (addNotes) { vals.push(mine && body.seat ? `${addNotes}. ${String(before.notes || '').replace(/^(HR \/ recruiting|Hiring manager|Department lead|VP of the department|CEO|Other)\.\s*/, '')}` : `${before.notes ? `${before.notes}. ` : ''}${addNotes}`); sets.push(`notes = $${vals.length}`); }
+      if (addNotes) { vals.push(mine && body.seat ? `${addNotes}. ${String(before.notes || '').replace(/^(HR \/ recruiting|Hiring manager|Department lead|VP of the department|CEO|Personal connection|Other)\.\s*/, '')}` : `${before.notes ? `${before.notes}. ` : ''}${addNotes}`); sets.push(`notes = $${vals.length}`); }
       if (!sets.length) return fail(400, 'empty_update', 'Send at least one of: email, title, note (and name or seat on contacts you added)');
       vals.push(cid);
       const row = (await q(`UPDATE job_contacts SET ${sets.join(', ')} WHERE id = $${vals.length} RETURNING *`, vals))[0];
@@ -448,6 +544,27 @@ async function route(r: Req, body: any): Promise<Out & { audit?: Parameters<type
     if (!(await getJob(id, r.host))) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
     const o = await outreach.jobOutreach(id);
     return ok({ run: o.run && { status: o.run.status, note: o.run.note, started_at: o.run.started_at, finished_at: o.run.finished_at }, drafts: o.drafts.map((d: any) => outreachView(d, r.host)) });
+  }
+  // POST /jobs/:id/outreach/drafts: stage one email for one contact. Always 'drafted'; only Alexis approves, nothing sends.
+  if (c === 'outreach' && r.parts[3] === 'drafts' && !r.parts[4] && r.method === 'POST') {
+    const job = await getJob(id, r.host);
+    if (!job) return fail(404, 'not_found', 'No job with that id (or it is in the Trash)');
+    const unknown = Object.keys(body).filter((f) => !['contact_id', 'subject', 'body', 'instructions'].includes(f));
+    if (unknown.length) return fail(400, 'unknown_field', `Unknown field(s): ${unknown.join(', ')}. Send contact_id, and either subject and body or optional instructions.`);
+    if (!Number.isInteger(body.contact_id)) return fail(400, 'missing_field', 'contact_id is required (from GET /jobs/:id/contacts)');
+    const hasSubject = typeof body.subject === 'string' && !!body.subject.trim();
+    const hasBody = typeof body.body === 'string' && !!body.body.trim();
+    if (hasSubject !== hasBody) return fail(400, 'invalid_field', 'Send both subject and body to stage your own text, or neither to have Careering write it');
+    if (hasBody && body.body.length > 10000) return fail(400, 'too_long', 'Keep the body under 10,000 characters');
+    if (typeof body.instructions === 'string' && body.instructions.length > 2000) return fail(400, 'too_long', 'Keep instructions under 2,000 characters');
+    if (job.stage === 'closed') return fail(409, 'closed', 'This job is closed. Ask Alexis before drafting outreach for it.');
+    try {
+      const d = await outreach.stageDraft(id, { contact_id: body.contact_id, subject: body.subject, body: body.body, instructions: body.instructions });
+      return { ...ok(outreachView(d, r.host), 201), audit: { job_id: id, summary: `Staged an outreach draft to ${d.to_name || 'a contact'} for ${job.company}, ${job.title} (not sent; waiting for Alexis)`, after: { id: d.id, to: d.to_email, subject: d.subject } } };
+    } catch (e: any) {
+      if (!(e instanceof HttpError)) throw e;
+      return fail(e.status, e.status === 404 ? 'not_found' : e.status === 409 ? 'duplicate' : 'ai_failed', e.message);
+    }
   }
   if (c === 'outreach' && r.parts[3] === 'start' && r.method === 'POST') {
     const job = await getJob(id, r.host);

@@ -1,5 +1,5 @@
-import { noDash } from './noDash';
-import { orderResume } from './resumeOrder';
+import { noDash } from './noDash.js';
+import { orderResume } from './resumeOrder.js';
 import { Document, Font, Page, Text, View, StyleSheet, pdf } from '@react-pdf/renderer';
 
 // Never split words across lines (no "engage-ment").

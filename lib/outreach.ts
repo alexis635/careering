@@ -37,6 +37,8 @@ export function ensureOutreachSchema() {
     await q(`ALTER TABLE outreach_drafts ADD COLUMN IF NOT EXISTS attachments JSONB NOT NULL DEFAULT '[]'`);
     await q(`ALTER TABLE outreach_drafts ADD COLUMN IF NOT EXISTS attachment_names JSONB NOT NULL DEFAULT '[]'`);
     await q(`ALTER TABLE outreach_drafts ADD COLUMN IF NOT EXISTS attach_digest TEXT NOT NULL DEFAULT ''`);
+    // who wrote the draft: Careering's own outreach run, or Noelle staging one through the agent API
+    await q(`ALTER TABLE outreach_drafts ADD COLUMN IF NOT EXISTS drafted_by TEXT NOT NULL DEFAULT 'careering'`);
   })().catch((e) => { ready = null; throw e; });
   return ready;
 }
@@ -58,6 +60,7 @@ export function seatOf(c: { title?: string; notes?: string }): { recipient: Reci
   if (/^Department lead/i.test(notes)) return { recipient: 'hiring_manager', rank: 1 };
   if (/^VP of the department/i.test(notes)) return { recipient: 'hiring_manager', rank: 2 };
   if (/^CEO/i.test(notes)) return { recipient: 'hiring_manager', rank: 3 };
+  if (/^Personal connection/i.test(notes)) return null;   // a friend or alum, never picked as the hiring manager or HR seat
   if (/recruit|talent|sourc|human resources|people (ops|operations|partner|team)|head of people|\bhr\b/i.test(title)) return { recipient: 'hr', rank: 1 };
   if (/\b(ceo|founder|owner|president)\b/i.test(title)) return { recipient: 'hiring_manager', rank: 3 };
   if (/\b(vp|vice president|svp|chief)\b/i.test(title)) return { recipient: 'hiring_manager', rank: 2 };
@@ -198,6 +201,12 @@ const GUIDE =
   'Do not put "Subject:" in the body. End the body with "Best," on its own line and then the candidate\'s full name from the CAREER FACTS. Never use a placeholder like [Your Name]. ' +
   '"tailored" is one short sentence for the candidate saying what makes this email specific to this person (for example which requirement or which part of their title it speaks to).';
 
+// The same rules before she applies, for drafts Noelle stages on a Saved job.
+const PRE_APPLY_GUIDE = GUIDE
+  .replace('You write post-application outreach emails', 'You write outreach emails')
+  .replace('She has ALREADY APPLIED to this role through the posting; each email follows up on that application with one specific person.', 'She has NOT applied yet; each email reaches out to one specific person about the role before she applies. Never say she applied.')
+  .replace('Say she applied for the exact role title', 'Name the exact role title she is interested in');
+
 type Pick = { recipient: Recipient; contact: any };
 type Drafted = { recipient: Recipient; subject: string; body: string; tailored: string };
 
@@ -227,10 +236,10 @@ const person = (p: Pick) =>
 
 const withPortfolio = (body: string, url: string) => (url && !body.includes(url) ? `${body.trim()}\n\nPortfolio: ${url}` : body.trim());
 
-async function draftFor(job: any, picks: Pick[], extra = ''): Promise<Drafted[]> {
+async function draftFor(job: any, picks: Pick[], extra = '', guide = GUIDE): Promise<Drafted[]> {
   const ctx = await context(job);
   const out = await askJson<{ drafts: Drafted[] }>(
-    GUIDE,
+    guide,
     `${ctx.text}\n\nWRITE ONE EMAIL FOR EACH OF THESE RECIPIENTS:\n${picks.map(person).join('\n')}${extra}`,
     {
       properties: {
@@ -260,7 +269,7 @@ async function draftFor(job: any, picks: Pick[], extra = ''): Promise<Drafted[]>
 const DRAFT_COLS = `d.id, d.job_id, d.contact_id, d.recipient, d.to_name, d.to_title, d.to_email, d.subject, d.body, d.tailored, d.status,
   d.approved_at, d.sent_at, d.sent_by, d.email_id, d.error, d.created_at, d.updated_at,
   (d.approved_hash IS NOT NULL AND d.approved_hash = encode(sha256(convert_to(lower(trim(d.to_email)) || E'\\n' || d.subject || E'\\n' || d.body || CASE WHEN d.attach_digest <> '' THEN E'\\n' || d.attach_digest ELSE '' END, 'UTF8')), 'hex')) AS approval_valid,
-  d.attachment_names,
+  d.attachment_names, d.drafted_by,
   EXISTS (SELECT 1 FROM job_emails r JOIN job_emails s ON s.gmail_thread_id = r.gmail_thread_id
            WHERE s.id = d.email_id AND r.direction = 'received') AS replied`;
 
@@ -403,6 +412,39 @@ export async function createApprovedDraft(jobId: number, body: any) {
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Written by you on the Emails tab','approved',now(),$9,$10,$11,$12) RETURNING id`,
     [jobId, contact?.id ?? null, seat, contact?.name ?? '', contact?.title ?? '', to_email, subject, text, approvalHash({ to_email, subject, body: text, attach_digest: digest }),
       JSON.stringify(atts.map((a) => ({ name: a.name, mime: a.mime, data: a.data }))), JSON.stringify(atts.map((a) => a.name)), digest]))[0];
+  return getDraft(row.id);
+}
+
+/**
+ * Noelle stages a draft for one contact. It always lands as 'drafted': only Alexis can approve it, and nothing
+ * here sends. Without a subject and body, Careering writes it from the job brief (her angle and advisor notes).
+ */
+export async function stageDraft(jobId: number, body: { contact_id: number; subject?: string; body?: string; instructions?: string }) {
+  await ensureOutreachSchema();
+  const job = await loadJob(jobId);
+  if (job.deleted_at) throw new HttpError(404, 'This job is in the Trash');
+  const contact = (await q(`SELECT * FROM job_contacts WHERE id=$1 AND job_id=$2 AND deleted_at IS NULL`, [body.contact_id, jobId]))[0];
+  if (!contact) throw new HttpError(404, 'No contact with that id on this job');
+  const open = (await q(`SELECT id FROM outreach_drafts WHERE job_id=$1 AND contact_id=$2 AND deleted_at IS NULL AND status NOT IN ('skipped','sent')`, [jobId, contact.id]))[0];
+  if (open) throw new HttpError(409, `There is already an open draft (id ${open.id}) for ${contact.name} on this job`);
+  let subject = noDash(String(body.subject || '')).trim();
+  let text = noDash(String(body.body || '')).trim();
+  let tailored = 'Staged by Noelle';
+  // a friend or fellow alum (Dillard, AKA, T.Howard) gets a warm note, not a hiring pitch, even with a senior title
+  const connection = /^(Personal connection|Other)\b/i.test(String(contact.notes || ''));
+  if (!subject || !text) {
+    const extra = `\n\nWHO THIS EMAIL IS FOR: ${contact.name}${contact.title ? `, ${contact.title}` : ''}${contact.notes ? `. Notes: ${String(contact.notes).slice(0, 500)}` : ''}` +
+      `${connection ? '\nThis person is a personal connection or fellow alum (see the notes), not the hiring manager or recruiter. Write a warm, brief note that names the shared connection, says which role she is looking at, and asks for their perspective or a referral. Do not pitch them as if they were hiring.' : ''}` +
+      `${body.instructions ? `\nDIRECTION FROM NOELLE: ${String(body.instructions).slice(0, 2000)}` : ''}`;
+    const recipient: Recipient = seatOf(contact)?.recipient ?? 'hiring_manager';
+    const [d] = await draftFor(job, [{ recipient, contact }], extra, job.stage === 'Saved' ? PRE_APPLY_GUIDE : GUIDE);
+    subject = d.subject; text = d.body; tailored = `Staged by Noelle. ${d.tailored}`.trim();
+  }
+  const seat: Seat = connection ? 'other' : seatOf(contact)?.recipient ?? 'other';
+  const row = (await q(
+    `INSERT INTO outreach_drafts (job_id, contact_id, recipient, to_name, to_title, to_email, subject, body, tailored, status, drafted_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'drafted','noelle') RETURNING id`,
+    [jobId, contact.id, seat, contact.name, contact.title || '', EMAIL_RE.test(contact.email) ? contact.email : '', subject, text, tailored]))[0];
   return getDraft(row.id);
 }
 
